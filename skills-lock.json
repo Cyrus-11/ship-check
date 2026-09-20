@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "skills": {
+    "architect": {
+      "source": "Cyrus-11/ECO-agent-skill",
+      "sourceType": "github",
+      "skillPath": "skill/architect/SKILL.md",
+      "computedHash": "371bc7dc815d74e748aac0334e7c66de4a3854aeafd374ad826b1ade3ae75f14"
+    },
+    "recover": {
+      "source": "Cyrus-11/ECO-agent-skill",
+      "sourceType": "github",
+      "skillPath": "skill/recover/SKILL.md",
+      "computedHash": "13e89f0963c670260709a735fe3202b9e94e015f17c269ba640239b3e0e70092"
+    },
+    "remember": {
+      "source": "Cyrus-11/ECO-agent-skill",
+      "sourceType": "github",
+      "skillPath": "skill/remember/SKILL.md",
+      "computedHash": "8a1561fcb451e1c631815119284e1600ebdb0fee9fe2dd9be341dc13f2c3c42a"
+    },
+    "review": {
+      "source": "Cyrus-11/ECO-agent-skill",
+      "sourceType": "github",
+      "skillPath": "skill/review/SKILL.md",
+      "computedHash": "e6e18df689de4ac0ca469293dd5a5f2f277fa19f9b70228914eec4111ea64cb2"
+    }
+  }
+}

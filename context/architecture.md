@@ -1,0 +1,504 @@
+# Architecture
+
+## Stack
+
+| Layer                  | Tool / Pattern                      | Purpose                                                   |
+| ---------------------- | ----------------------------------- | --------------------------------------------------------- |
+| Runtime                | Node.js 22.12+                       | Executes the CLI and satisfies the current Vitest engine  |
+| Language               | TypeScript strict                   | Type-safe implementation                                  |
+| Application framework  | NestJS standalone context           | Modules, providers, dependency injection, lifecycle       |
+| CLI framework          | `nest-commander`                    | Commands, flags, help, version handling                    |
+| Process execution      | `execa`                             | Runs Git and npm commands with captured results/timeouts   |
+| Environment parsing    | `dotenv`                            | Parses `.env.example`, `.env`, and `.env.local` safely     |
+| Terminal color         | `chalk`                             | Semantic status color with automatic color suppression     |
+| Spinner                | `ora`                               | Local TTY progress only                                    |
+| Unit/integration tests | Vitest                              | Fast TypeScript tests, mocks, fixtures, coverage            |
+| Nest testing           | `@nestjs/testing`                   | Creates focused dependency-injection test modules          |
+| Packaging              | npm `bin` field + compiled `dist/`  | Exposes the `shipcheck` executable                          |
+
+There is no HTTP adapter, controller, database, authentication, telemetry, or frontend in v0.1.
+
+---
+
+## Runtime Model
+
+Shipcheck is a NestJS application context, not a Nest web server. `nest-commander` creates and closes the application context around the selected command.
+
+```typescript
+#!/usr/bin/env node
+
+import "reflect-metadata";
+import { CommandFactory } from "nest-commander";
+import { AppModule } from "./app.module.js";
+
+async function bootstrap(): Promise<void> {
+  await CommandFactory.run(AppModule, {
+    errorHandler: (error: Error) => {
+      process.stderr.write(`Shipcheck failed to start: ${error.message}\n`);
+      process.exitCode = 2;
+    },
+  });
+}
+
+void bootstrap();
+```
+
+The exact API must be confirmed against the installed `nest-commander` version before implementation. The architectural invariant is that no HTTP server is created.
+
+---
+
+## Module System
+
+Shipcheck uses native ECMAScript modules because current versions of terminal and process libraries are ESM-first.
+
+Required project conventions:
+
+```json
+{
+  "type": "module"
+}
+```
+
+```json
+{
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "target": "ES2022",
+    "strict": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true
+  }
+}
+```
+
+Relative TypeScript imports use the runtime `.js` extension, for example `./app.module.js`. Path aliases are not introduced in v0.1 because compiled Node ESM does not resolve TypeScript-only aliases without extra runtime tooling.
+
+---
+
+## Folder Structure
+
+```text
+/
+├── AGENTS.md
+├── context/
+│   ├── project-overview.md
+│   ├── architecture.md
+│   ├── cli-output-tokens.md
+│   ├── cli-output-rules.md
+│   ├── scanner-registry.md
+│   ├── code-standards.md
+│   ├── library-docs.md
+│   ├── build-plan.md
+│   └── progress-tracker.md
+├── src/
+│   ├── main.ts                              → Executable bootstrap
+│   ├── app.module.ts                        → Root Nest module
+│   ├── commands/
+│   │   ├── commands.module.ts               → Registers command providers
+│   │   ├── scan.command.ts                  → Parses `scan` and `--ci`
+│   │   └── scan-command.options.ts          → Command option type
+│   ├── scan/
+│   │   ├── scan.module.ts                   → Orchestration composition
+│   │   └── scan.service.ts                  → Runs scanner pipeline
+│   ├── scanners/
+│   │   ├── scanners.module.ts               → Scanner providers + registry token
+│   │   ├── scanner.tokens.ts                → `SCANNERS` injection token
+│   │   ├── git/
+│   │   │   └── git.scanner.ts
+│   │   ├── build/
+│   │   │   └── build.scanner.ts
+│   │   ├── test/
+│   │   │   └── test.scanner.ts
+│   │   └── env/
+│   │       └── env.scanner.ts
+│   ├── scoring/
+│   │   ├── scoring.module.ts
+│   │   └── scoring.service.ts
+│   ├── reporter/
+│   │   ├── reporter.module.ts
+│   │   └── terminal-reporter.service.ts
+│   ├── infrastructure/
+│   │   ├── infrastructure.module.ts
+│   │   ├── process-runner.service.ts        → Only provider allowed to spawn commands
+│   │   ├── file-system.service.ts           → Read-only filesystem wrapper
+│   │   └── clock.service.ts                 → Duration measurement seam
+│   └── common/
+│       ├── constants/
+│       │   ├── exit-codes.ts
+│       │   ├── scan-order.ts
+│       │   └── scoring.ts
+│       ├── contracts/
+│       │   └── scanner.contract.ts
+│       └── types/
+│           ├── package-json.type.ts
+│           ├── scan-context.type.ts
+│           ├── scan-report.type.ts
+│           └── scan-result.type.ts
+├── test/
+│   ├── unit/
+│   │   ├── commands/
+│   │   ├── scanners/
+│   │   ├── scoring/
+│   │   └── reporter/
+│   ├── integration/
+│   │   └── scan.integration.spec.ts
+│   ├── fixtures/
+│   │   ├── ready-project/
+│   │   ├── dirty-git-project/
+│   │   ├── failing-build-project/
+│   │   ├── failing-test-project/
+│   │   └── missing-env-project/
+│   └── helpers/
+│       └── fixture-repository.ts
+├── package.json
+├── tsconfig.json
+├── tsconfig.build.json
+├── vitest.config.ts
+├── eslint.config.js
+├── .gitignore
+├── LICENSE
+└── README.md
+```
+
+Tests remain outside `src/` so production builds only emit runtime code.
+
+---
+
+## System Boundaries
+
+| Area              | Owns                                                                 | Must not own                                      |
+| ----------------- | -------------------------------------------------------------------- | ------------------------------------------------- |
+| `commands/`       | CLI metadata, option parsing, exit-code selection                    | Scanner logic, scoring formulas, process calls    |
+| `scan/`           | Pipeline orchestration and report assembly                           | Git/npm details, terminal styling                  |
+| `scanners/`       | One release-readiness rule per scanner                               | Cross-scanner scoring or process implementation    |
+| `scoring/`        | Weight calculation and readiness status                              | Terminal output or process exit                    |
+| `reporter/`       | Human-readable terminal rendering                                    | Scanner execution or release policy changes        |
+| `infrastructure/` | Process, filesystem, and timing adapters                             | Product decisions                                  |
+| `common/`         | Shared contracts, types, constants                                   | Stateful services or feature logic                 |
+| `test/`           | Unit tests, integration tests, isolated repository fixtures          | Production runtime code                            |
+
+---
+
+## Dependency Direction
+
+```text
+ScanCommand
+    ↓
+ScanService
+    ├── SCANNERS → Scanner[]
+    ├── ScoringService
+    └── TerminalReporter
+
+Scanner implementations
+    ├── ProcessRunner
+    ├── FileSystem
+    └── Clock
+```
+
+Dependencies flow inward through contracts. Scanners never import the command or reporter. The reporter never spawns commands. Infrastructure never knows readiness policy.
+
+---
+
+## Core Contracts
+
+### Scan Context
+
+```typescript
+export type ScanContext = {
+  cwd: string;
+  projectName: string;
+  packageJsonPath: string;
+  packageJson: PackageJson;
+  ci: boolean;
+};
+```
+
+The context is created once by `ScanService`. Scanners do not independently choose a working directory.
+
+### Scanner Contract
+
+```typescript
+export interface Scanner {
+  readonly id: ScanResult["id"];
+  readonly name: string;
+  readonly weight: number;
+  run(context: ScanContext): Promise<ScanResult>;
+}
+```
+
+An interface is used here because scanner implementations share an extendable behavioral contract.
+
+### Result and Report
+
+```typescript
+export type ScanStatus = "passed" | "failed" | "skipped" | "error";
+
+export type ScanResult = {
+  id: "git" | "build" | "test" | "env";
+  name: string;
+  status: ScanStatus;
+  summary: string;
+  details: string[];
+  durationMs: number;
+  weight: number;
+};
+
+export type ReadinessStatus = "READY" | "REVIEW" | "NOT_READY";
+
+export type ScanReport = {
+  projectName: string;
+  cwd: string;
+  results: ScanResult[];
+  score: number;
+  status: ReadinessStatus;
+  gatePassed: boolean;
+  durationMs: number;
+};
+```
+
+---
+
+## Scanner Registry
+
+Nest does not provide implicit multi-binding. `ScannersModule` exposes an explicit array through one injection token:
+
+```typescript
+export const SCANNERS = Symbol("SCANNERS");
+
+const scannerRegistryProvider = {
+  provide: SCANNERS,
+  inject: [GitScanner, BuildScanner, TestScanner, EnvScanner],
+  useFactory: (
+    git: GitScanner,
+    build: BuildScanner,
+    test: TestScanner,
+    env: EnvScanner,
+  ): Scanner[] => [git, build, test, env],
+};
+```
+
+The array order is product behavior. Do not sort scanners alphabetically or discover them dynamically in v0.1.
+
+---
+
+## Execution Flow
+
+```text
+$ shipcheck scan [--ci]
+          ↓
+     ScanCommand
+          ↓
+     ScanService
+          ↓
+  validate package.json
+          ↓
+ Git → Build → Tests → Environment
+          ↓
+    ScanResult[]
+          ↓
+   ScoringService
+          ↓
+     ScanReport
+          ↓
+ TerminalReporter
+          ↓
+ select exit code
+```
+
+Scanners run sequentially in v0.1. This produces deterministic progress output and avoids running build and test commands against the same repository at the same time.
+
+---
+
+## Project Discovery
+
+`ScanService` resolves `process.cwd()` once and reads `<cwd>/package.json`.
+
+Failure rules:
+
+- Missing `package.json` → fatal command error, print a concise message, exit `2`
+- Invalid JSON → fatal command error, exit `2`
+- Missing or blank package name → use the directory basename as `projectName`
+- Non-Node repository → no heuristic fallback; v0.1 ends with the fatal error
+
+Project discovery does not walk parent directories.
+
+---
+
+## Process Runner
+
+All external commands go through `ProcessRunner`. Scanners never import `execa` directly.
+
+```typescript
+export type ProcessRequest = {
+  file: string;
+  args: string[];
+  cwd: string;
+  env?: NodeJS.ProcessEnv;
+  timeoutMs: number;
+};
+
+export type ProcessResult = {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+  timedOut: boolean;
+};
+```
+
+Rules:
+
+- Never execute through a shell
+- Command and arguments are separate values
+- Capture output instead of inheriting the terminal
+- Use `reject: false` so non-zero exits become scanner results
+- Enforce a 120-second timeout for build and test commands
+- Limit retained stdout/stderr to a safe maximum before placing excerpts in details
+- Redact no secrets after the fact; avoid printing captured output by default
+- Preserve the parent environment and add `CI=true` only for the test command
+
+---
+
+## Scanner Algorithms
+
+### Git
+
+```text
+git rev-parse --is-inside-work-tree
+git branch --show-current
+git status --porcelain
+```
+
+- First command failure → failed, "Not a Git repository"
+- Empty branch output → report "detached HEAD"
+- Any porcelain output → failed, report changed-file count only
+- Empty porcelain output → passed
+
+File names from `git status` are not printed in v0.1.
+
+### Build
+
+```text
+read packageJson.scripts.build
+if absent → failed
+run: npm run build
+timeout: 120 seconds
+exit 0 → passed
+non-zero or timeout → failed
+spawn error → error
+```
+
+### Tests
+
+```text
+read packageJson.scripts.test
+if absent → failed
+run: npm test
+environment: existing env + CI=true
+timeout: 120 seconds
+exit 0 → passed
+non-zero or timeout → failed
+spawn error → error
+```
+
+### Environment
+
+```text
+if .env.example absent → skipped
+parse required names from .env.example
+parse .env when present
+parse .env.local when present
+merge available names with process.env
+empty string counts as missing
+missing names → failed
+otherwise → passed
+```
+
+Only names may enter `details`. Values must be discarded immediately after presence evaluation.
+
+---
+
+## Scoring Algorithm
+
+```typescript
+const applicable = results.filter((result) => result.status !== "skipped");
+const denominator = applicable.reduce((sum, result) => sum + result.weight, 0);
+const numerator = applicable
+  .filter((result) => result.status === "passed")
+  .reduce((sum, result) => sum + result.weight, 0);
+
+const score = denominator === 0 ? 0 : Math.round((numerator / denominator) * 100);
+```
+
+Status rules:
+
+```typescript
+if (score >= 90) return "READY";
+if (score >= 70) return "REVIEW";
+return "NOT_READY";
+```
+
+The release gate passes only for `READY`.
+
+---
+
+## Exit Codes
+
+| Code | Meaning                                                                 |
+| ---: | ----------------------------------------------------------------------- |
+| `0`  | Help/version, or completed local scan, or CI scan with `READY` status    |
+| `1`  | Completed CI scan with `REVIEW` or `NOT READY` status                    |
+| `2`  | Invalid command usage, missing/invalid project metadata, bootstrap error |
+
+Use `process.exitCode`; do not call `process.exit()` inside services. This allows buffered terminal output and application cleanup to finish.
+
+---
+
+## Test Architecture
+
+### Unit Tests
+
+- Scanner tests mock `ProcessRunner`, `FileSystem`, and `Clock`
+- Scoring tests use table-driven result sets
+- Reporter tests inject a writer and color capability instead of patching global console behavior
+- Command tests mock `ScanService` and verify exit-code selection
+
+### Integration Tests
+
+- Each test copies a fixture into a unique temporary directory
+- Git-dependent fixtures are initialized inside the temporary copy
+- Tests never mutate committed fixture sources
+- Mutation checks distinguish Shipcheck-owned changes from expected build/test script side effects in temporary fixture copies
+- Integration tests run the compiled CLI as a child process
+- Color and spinner behavior are disabled for stable assertions
+- Exit code, stdout, and stderr are asserted independently
+
+---
+
+## Security and Privacy Boundaries
+
+- Shipcheck does not make network requests
+- Shipcheck never reads files outside the current project except executable resolution by the operating system
+- Shipcheck-owned operations never write to the scanned repository
+- Environment values are never placed in result objects
+- Subprocesses run without `shell: true`
+- Repository-owned build and test scripts execute with the user's permissions and may generate files or perform other side effects; scanning is not a sandbox
+- Shipcheck must only be run in repositories the user trusts, because `npm run build` and `npm test` execute repository-owned code
+
+---
+
+## Invariants
+
+- No controllers, HTTP adapters, ports, REST routes, Swagger, guards, or web middleware
+- Only `ScanCommand` decides the final process exit code
+- Only `ScanService` orchestrates the full scanner sequence
+- Only `ProcessRunner` starts child processes
+- Only `TerminalReporter` formats user-facing scan output
+- Scanner order is Git, Build, Tests, Environment
+- Scanner weights are defined once and total 100 before skips
+- A scanner exception becomes an `error` result and never aborts later scanners
+- Build and test commands always run with the scanned project as `cwd`
+- Environment values never leave `EnvScanner`
+- The current working directory is resolved once per command
+- Shipcheck-owned operations never modify the scanned repository; repository-owned build/test scripts may do so
+- Every behavior added to v0.1 must be represented in this context pack and the progress tracker
