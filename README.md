@@ -4,7 +4,7 @@ Shipcheck is a local-first release-readiness CLI for Node.js and TypeScript repo
 
 ## Current status
 
-Feature 01 scaffolds the TypeScript and NestJS standalone CLI. The compiled entry point supports basic `--help`. Version handling, the `scan` command, scanners, and release reporting are not implemented yet. See [the progress tracker](context/progress-tracker.md).
+Features 01 and 02 provide the TypeScript and NestJS standalone CLI bootstrap. The compiled entry point supports product `--help` and package-derived `--version` from any working directory. Invalid usage exits `2`; help and version exit `0` after application cleanup. The `scan` command, scanners, and release reporting are not implemented yet. See [the progress tracker](context/progress-tracker.md).
 
 ## Development
 
@@ -14,12 +14,13 @@ The runtime baseline is Node.js 22.12+. For development and tests, use Node 22.1
 npm ci
 npm run build
 node dist/main.js --help
+node dist/main.js --version
 npm test
 ```
 
 `npm run dev` watches and recompiles application source. Run the compiled entry point separately after a successful build.
 
-`npm test` first builds production code and compiles the tests with `tsc`, then runs Vitest against `.test-dist/`. This preserves Nest constructor metadata in both builds. Tests verify package metadata, executable startup, absence of network listeners, and dependency injection. Production output in `dist/` contains no tests.
+`npm test` first builds production code and compiles the tests with `tsc`, then runs Vitest against `.test-dist/`. This preserves Nest constructor metadata in both builds. Tests verify package metadata, help/version, usage errors, asynchronous cleanup, safe startup/execution failures, absence of network listeners, and dependency injection. Metadata-loader tests run in native Node subprocesses to preserve JSON import attributes. Production output in `dist/` contains no tests.
 
 ## Scope and trust
 

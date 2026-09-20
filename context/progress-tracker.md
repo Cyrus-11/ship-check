@@ -12,9 +12,9 @@ Update this file after every completed feature. Any engineer or AI agent reading
 
 **In progress:** None
 
-**Last completed:** 01 Project Scaffold
+**Last completed:** 02 Nest Standalone CLI Bootstrap
 
-**Next:** 02 Nest Standalone CLI Bootstrap
+**Next:** 03 Scan Command Shell
 
 **Blockers:** None recorded
 
@@ -25,7 +25,7 @@ Update this file after every completed feature. Any engineer or AI agent reading
 ### Phase 1 — Foundation
 
 - [x] 01 Project Scaffold
-- [ ] 02 Nest Standalone CLI Bootstrap
+- [x] 02 Nest Standalone CLI Bootstrap
 - [ ] 03 Scan Command Shell
 
 ### Phase 2 — Core Contracts and Infrastructure
@@ -72,15 +72,15 @@ Update this file after every completed feature. Any engineer or AI agent reading
 
 | Gate                       | Status      | Last verified |
 | -------------------------- | ----------- | ------------- |
-| TypeScript build           | Passed (scaffold) | 2026-09-20 |
-| Unit tests                 | Passed (6 scaffold checks, including CLI smoke test) | 2026-09-20 |
-| Integration tests          | Not started | —             |
-| Help/version smoke test    | Basic help passed; product help/version pending feature 02 | 2026-09-20 |
+| TypeScript build           | Passed (production and test compilation) | 2026-09-20 |
+| Unit tests                 | Passed (6 scaffold and 4 bootstrap boundary checks) | 2026-09-20 |
+| Integration tests          | Passed (20 compiled CLI and 8 native metadata checks); scan fixtures pending | 2026-09-20 |
+| Help/version smoke test    | Product help/version passed; invalid usage returns 2 | 2026-09-20 |
 | Local scan smoke test      | Not started | —             |
 | CI exit-code smoke test    | Not started | —             |
 | Package dry run            | Not started | —             |
-| Secret-leak negative check | Not started | —             |
-| Shipcheck-owned mutation check | Not started | —         |
+| Secret-leak negative check | Passed for bootstrap failures; scan checks pending | 2026-09-20 |
+| Shipcheck-owned mutation check | Passed for help/version; scan checks pending | 2026-09-20 |
 
 ---
 
@@ -127,9 +127,35 @@ Add implementation-time decisions below this line with date, reason, and affecte
 
 ---
 
+## Bootstrap Decisions and Verification — 2026-09-20
+
+- Added `CommandsModule` and a root provider for product help/name/description; bare invocation prints help, excess arguments are rejected, and the implicit help subcommand is disabled
+- Added package-relative native JSON loading with version validation; help/version work outside the repository and ignore target-project/plugin metadata
+- Kept one `CommandFactory.run()` invocation. Its parser override throws so Nest can finish asynchronous shutdown; the service handler recognizes captured parser signals by identity and rethrows unexpected failures. Parser exit codes are applied after cleanup; cleanup failure selects 2
+- Added shared `EXIT_CODE` constants at the first bootstrap use rather than duplicating values until feature 04; that feature will reuse this file and remains incomplete
+- Usage and fatal diagnostics are fixed safe text. No dependencies, scanner behavior, HTTP components, production test switches, or scan command were added
+- Corrected the test helper's mapping of Execa's optional exitCode into the required test result field after the initial test compilation failure
+- Initial in-process metadata tests failed with `ERR_IMPORT_ATTRIBUTE_MISSING` because Vitest's data-URL import path dropped JSON attributes. Moved these cases to native Node subprocesses loading the production module; preserved the validation cases and runtime implementation
+- Final `npm test` with `NO_COLOR=1` passed production build, test compilation, and all 38 tests across 4 files
+- Compiled CLI tests verify exact help/version, aliases, bare invocation, invalid options/commands/paths, package-relative version, disabled plugins, no target mutation, no listener, asynchronous shutdown, and safe startup/execution/cleanup failures. A command error resembling a successful parser signal still fails
+- Manual `node dist/main.js --help` and `--version` returned 0; `--unknown` returned 2 with the usage hint
+- Scoped review covered plan alignment, module/error boundaries, lifecycle, output safety, and coverage; no actionable findings remained. All four scanners and the registry remain accurately marked not started
+- Documentation tooling recovery: the patch helper reported a Windows sandbox setup access error, and longer fallback shell edits stalled without changing the target documents. Stopped those processes, verified a minimal workspace write, and completed updates after the patch helper became available again. No application repair was needed
+- Limits: Windows / Node 24.16.0 only. Node 22.12, other operating systems, installed npm launchers, and packaging remain unverified. Startup rejection is handled safely; factory cleanup is available only after application creation succeeds
+
+---
+
 ## Deviations From Context
 
-None.
+### Approved feature 02/03 sequencing adjustment — 2026-09-20
+
+- The user approved moving “root help lists the scan command” from feature 02 acceptance to feature 03, where `ScanCommand` is introduced
+- Reason: requiring the command in feature 02 conflicts with sequential feature ownership and would require premature scan registration or misleading help
+- Feature 02 owns product-named help, package-derived version, safe usage/bootstrap exit behavior, and lifecycle verification; feature 03 completes the final help surface with `scan` and `--ci`
+- Updated `build-plan.md` and `cli-output-rules.md`; the final v0.1 public surface is unchanged
+- The detailed feature 02 architecture plan is recorded in `build-plan.md`, including installed API findings, proposed paths, ordered work, acceptance criteria, and verification
+- The initial adjustment was documentation only; feature 02 was subsequently implemented and verified as recorded above
+- Scanner behavior and implementation status remain unchanged; all four scanner entries remain accurate
 
 If implementation must differ from the context pack:
 
@@ -169,12 +195,12 @@ Known blocker:
 
 ```text
 Date: 2026-09-20
-Completed feature: 01 Project Scaffold
-Files changed: package.json, package-lock.json, .gitignore, tsconfig*.json, vitest.config.ts, src/*, test/helpers/*, test/unit/scaffold.spec.ts, README.md, LICENSE, context/library-docs.md, context/architecture.md, context/progress-tracker.md
-Tests run and results: npm install --no-audit --no-fund --strict-peer-deps passed without warnings on the final dependency set; npm test with NO_COLOR=1 passed production build, test compilation, and all 6 tests; git diff --check passed
-Manual verification: node dist/main.js --help exited 0 with basic help and no Nest logs; dependency tree has compatible Nest 11 peers; tests verify shebang, package metadata, no emitted production tests, constructor DI and missing-dependency rejection, no network listener, and no HTTP platform adapter
-Verification limits: Windows / Node 24.16.0 / npm 11.13.0 only; Node 22.12 and other OS execution not tested. Product help/version, scan behavior, and installed npm launcher/packaging checks remain in later features
-Decision or deviation recorded: Scaffold Decisions and library compatibility note added; MIT confirmed by user; no product-scope deviation
-Next feature: 02 Nest Standalone CLI Bootstrap
+Completed feature: 02 Nest Standalone CLI Bootstrap
+Files changed: src/main.ts, src/app.module.ts, src/bootstrap.ts, src/commands/*, src/common/package-version.ts, src/common/constants/exit-codes.ts, test/unit/bootstrap.spec.ts, test/integration/*, test/helpers/bootstrap-probe.ts, test/helpers/package-version-probe.ts, README.md, context/architecture.md, context/library-docs.md, context/build-plan.md, context/cli-output-rules.md, context/progress-tracker.md
+Tests run and results: npm test with NO_COLOR=1 passed production build, test compilation, and all 38 tests (4 files)
+Manual verification: compiled help/version exit 0; invalid option exits 2; correct product output and no Nest logs
+Verification limits: Windows / Node 24.16.0 only; Node 22.12, other OSes, installed npm launcher/packaging, and scan fixtures remain unverified
+Decision or deviation recorded: approved scan-help acceptance move to feature 03; native Node metadata tests avoid Vitest import-attribute loss; shared exit constants added at first use
+Next feature: 03 Scan Command Shell
 Known blocker: None
 ```

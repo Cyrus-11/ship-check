@@ -144,6 +144,8 @@ Rules:
 
 ## Human-Readable Errors
 
+Bootstrap/startup/execution/cleanup failures print `Shipcheck could not complete the command.` on stderr and select exit `2`. Invalid usage prints `Shipcheck received invalid arguments. Run shipcheck --help for usage.` on stderr and selects exit `2`. Both end with `\n`; neither includes raw arguments or internal error contents.
+
 Fatal errors use this pattern:
 
 ```text
@@ -213,7 +215,11 @@ CI mode does not:
 
 ## Help Output
 
+Implementation sequencing: feature 02 supplies product help and version with `Usage: shipcheck [options]`. Feature 03 registers `scan`, adds its help entry and `--ci`, and completes the final help surface below. This sequencing adjustment was approved on 2026-09-20; feature 02 must not advertise an unimplemented scan command.
+
 Help must communicate only the v0.1 surface:
+
+Bare invocation prints root help on stdout and exits `0`. `-h` and `-V` are the help/version aliases. The implicit `help` subcommand is disabled.
 
 ```text
 Usage: shipcheck [options] [command]

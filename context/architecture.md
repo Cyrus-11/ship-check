@@ -28,22 +28,17 @@ Shipcheck is a NestJS application context, not a Nest web server. `nest-commande
 #!/usr/bin/env node
 
 import "reflect-metadata";
-import { CommandFactory } from "nest-commander";
-import { AppModule } from "./app.module.js";
 
-async function bootstrap(): Promise<void> {
-  await CommandFactory.run(AppModule, {
-    errorHandler: (error: Error) => {
-      process.stderr.write(`Shipcheck failed to start: ${error.message}\n`);
-      process.exitCode = 2;
-    },
-  });
-}
+import { bootstrap } from "./bootstrap.js";
 
 void bootstrap();
 ```
 
-The exact API must be confirmed against the installed `nest-commander` version before implementation. The architectural invariant is that no HTTP server is created.
+`src/bootstrap.ts` calls `CommandFactory.run()` once with logging and plugins disabled, `abortOnError: false`, and the package-derived version. The root command is registered through `CommandsModule`; its metadata supplies the product name and description. No HTTP server is created.
+
+With nest-commander 3.21.0 / Commander 11.1.0, `errorHandler` must throw the parser exit signal: returning would let Commander call `process.exit()` before cleanup. `serviceErrorHandler` recognizes only the same signal observed by the override, records success for help/version or exit `2` for invalid usage, and rethrows unexpected errors. The bootstrap applies parser exit decisions after the factory finishes asynchronous shutdown. Metadata, startup, execution, or cleanup failures produce a fixed safe stderr message and exit `2`. Factory shutdown applies after application creation succeeds; the factory does not expose a partially created context when startup rejects.
+
+`src/common/package-version.ts` imports Shipcheck's own package metadata using a URL relative to its compiled module, independent of the scanned project's working directory. This package read does not belong to scanned-project discovery or the future `FileSystem` adapter.
 
 ---
 
@@ -480,7 +475,7 @@ Use `process.exitCode`; do not call `process.exit()` inside services. This allow
 ## Security and Privacy Boundaries
 
 - Shipcheck does not make network requests
-- Shipcheck never reads files outside the current project except executable resolution by the operating system
+- Scanned-project file access stays within the current project; Shipcheck also loads its own installed runtime and package metadata, and the operating system resolves executables
 - Shipcheck-owned operations never write to the scanned repository
 - Environment values are never placed in result objects
 - Subprocesses run without `shell: true`
@@ -492,7 +487,7 @@ Use `process.exitCode`; do not call `process.exit()` inside services. This allow
 ## Invariants
 
 - No controllers, HTTP adapters, ports, REST routes, Swagger, guards, or web middleware
-- Only `ScanCommand` decides the final process exit code
+- Command/bootstrap layers own exit decisions; `ScanCommand` will select completed-scan exits
 - Only `ScanService` orchestrates the full scanner sequence
 - Only `ProcessRunner` starts child processes
 - Only `TerminalReporter` formats user-facing scan output

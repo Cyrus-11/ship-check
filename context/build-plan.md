@@ -58,27 +58,80 @@ Create the minimal Node.js, TypeScript, and NestJS CLI project.
 
 Connect `nest-commander` to the Nest application context.
 
-**Implementation:**
+**Status:** Implemented and verified on 2026-09-20. Production/test builds and all 38 tests passed; feature 03 is next.
 
-- Add `CommandsModule`
-- Configure `CommandFactory.run()` with `cliName: "shipcheck"`
-- Disable plugin discovery
-- Supply package version to the command factory
-- Add bootstrap error handling and exit code `2`
-- Confirm default Nest logs do not pollute output
+**Approved sequencing adjustment — 2026-09-20:**
 
-**Acceptance:**
+The user approved moving the acceptance criterion that root help lists `scan` to feature 03, which introduces `ScanCommand`. Feature 02 establishes product help/version, usage errors, and application lifecycle behavior. It does not register or advertise a placeholder scan command. The final v0.1 help contract is unchanged.
 
-- `shipcheck --help` shows the product description and scan command
-- `shipcheck --version` prints `0.1.0`
-- Process terminates cleanly after help/version
-- No port opens and no HTTP adapter loads
+**Outcome and scope:**
 
-**Tests:**
+- Product-named help and package-derived version work from any working directory
+- Help/version and invalid usage finish output and application cleanup before termination
+- Startup failures produce a concise safe message and exit `2`
+- Scan execution, `--ci`, discovery, scanners, scoring, and report rendering remain later features
+- Keep the installed dependency set and Node 22.12+ baseline; no new dependency is needed
 
-- Command-factory integration test for help
-- Version output test
-- Bootstrap error-handler test through an isolated seam where practical
+**Installed API findings:**
+
+- Nest common/core/testing are 11.2.5; nest-commander is 3.21.0 and wraps Commander 11.1.0
+- `cliName` does not set the root command's displayed name; use nest-commander's `@RootCommand()` metadata for name and description
+- `CommandFactory.run()` closes the initialized application in `finally` after command execution
+- The factory's `errorHandler` is passed to Commander's `exitOverride`; returning from that callback still reaches `process.exit()` in the installed Commander implementation
+- Command parsing catches errors through `serviceErrorHandler`; its default writes the error directly, so both handlers need deliberate configuration
+- Application creation occurs before the factory's execution `try/finally`; distinguish startup failure handling from cleanup of an already initialized context
+- The original illustrative error handlers in `architecture.md` and `library-docs.md` were replaced with the verified lifecycle pattern
+
+These findings were checked against installed source/types and the official [factory](https://nest-commander.jaymcdoniel.dev/en/features/factory/) and [command](https://nest-commander.jaymcdoniel.dev/en/features/commander/) documentation. The installed implementation governs version-specific behavior.
+
+**Implemented areas:**
+
+| Path | Responsibility |
+| --- | --- |
+| `src/main.ts` | Preserve shebang and metadata import; invoke bootstrap once |
+| `src/bootstrap.ts` | Configure the factory, handle exit signals and fatal failures, expose a narrow testing seam |
+| `src/app.module.ts` | Import `CommandsModule` |
+| `src/commands/commands.module.ts` | Register the root command provider |
+| `src/commands/root.command.ts` | Product metadata, root help, and strict argument handling |
+| `src/common/package-version.ts` | Load and validate Shipcheck's own package version |
+| `src/common/constants/exit-codes.ts` | Shared exit constants introduced at first use; feature 04 reuses them |
+| `test/unit/bootstrap.spec.ts` | Safe failure handling and preservation of command exit decisions |
+| `test/integration/bootstrap.integration.spec.ts` | Compiled CLI streams, exits, working-directory independence, and lifecycle |
+| `test/integration/package-version.integration.spec.ts` | Native Node package-version validation |
+| `test/helpers/` | Isolated lifecycle/failure probes alongside the existing network-listener guard |
+
+**Ordered implementation:**
+
+1. Add `CommandsModule` and a `@RootCommand()` provider named `shipcheck`, with description `Check whether a Node.js project is ready to ship`. Register it through `AppModule`. Configure the framework-owned command instance to reject excess arguments and disable the implicit `help` subcommand. A bare invocation prints root help and exits `0`; it never starts a scan.
+2. Load Shipcheck's own package metadata using a package-relative ESM URL and JSON import attributes, independent of `process.cwd()`. Validate that the version is a non-empty string; do not fall back to a duplicated literal. Keep this read separate from future scanned-project file access. Exercise the real loader through `dist/`; account explicitly for the different `.test-dist/` layout in isolated tests.
+3. Extract a small bootstrap function and retain one `CommandFactory.run()` call with `cliName: "shipcheck"`, the loaded version, `usePlugins: false`, `logger: false`, and `abortOnError: false`. No second Nest context or `runWithoutClosing`.
+4. Make `errorHandler` throw the framework exit signal so its callback cannot fall through to `process.exit()`. In `serviceErrorHandler`, recognize help/version success signals, classify parser usage failures as exit `2`, and propagate unexpected execution failures to the outer bootstrap boundary. Narrow unknown values without importing Commander as a separate application layer. Avoid duplicate diagnostics.
+5. Catch metadata, factory startup, unexpected execution, and cleanup failures at the bootstrap boundary. Print a fixed safe startup/execution message to stderr, never an arbitrary error message or stack, and select exit `2`. Allow factory cleanup and buffered output to finish; a cleanup failure must override an otherwise successful exit. Keep exit decisions within command/bootstrap code.
+6. Add focused behavioral tests using the existing tsc-before-Vitest toolchain. Use test-only injected failures and lifecycle probes; do not add production failure flags or environment switches.
+7. Run verification, update the illustrative bootstrap documentation to match the actual implementation, and record evidence in the tracker. Confirm all scanner-registry entries remain accurate before marking feature 02 complete.
+
+**Acceptance and verification:**
+
+| Scenario | Observable result |
+| --- | --- |
+| `--help` and `-h` | `Usage: shipcheck [options]`, exact product description, help/version options, stdout, empty stderr, exit `0` |
+| `--version` and `-V` | Current package version only with a trailing newline, stdout, empty stderr, exit `0` |
+| No arguments | Root help on stdout, exit `0` |
+| Unknown flag, unknown command, or positional path | Concise usage diagnostic on stderr, exit `2`, no successful command execution |
+| Help/version from an unrelated temporary directory | Same output and version even without a project manifest or with a different project's version |
+| Metadata load failure or Nest startup rejection | Safe stderr, exit `2`, no stack, serialized error, or injected secret marker |
+| Unexpected execution or cleanup failure | Safe stderr, exit `2`; initialized application cleanup is attempted |
+| Help/version and usage-error lifecycle | Test probe observes completed asynchronous shutdown hooks exactly once; subprocess terminates within the test timeout |
+| All compiled CLI cases | No Nest logs, network listener, ANSI/spinner artifacts, or HTTP adapter |
+
+- Assert stdout, stderr, and exit code separately; preserve existing scaffold checks
+- Run `npm test` with `NO_COLOR=1`; its existing pretest runs the production build and test compilation
+- Manually smoke-test `node dist/main.js --help`, `--version`, and one invalid option, checking exit codes
+- Run `git diff --check`
+- Record platform evidence honestly: the available environment is Windows / Node 24.16.0; minimum-Node and other-OS execution require those environments
+- Installed npm launcher and full packaging smoke tests remain feature 17
+
+**Completion:** No unresolved feature 02 decisions. Root-command configuration and asynchronous lifecycle passed compiled-executable tests. Metadata tests use native Node because Vitest's data-URL import path lost JSON attributes. See the tracker for verification evidence and platform/packaging limits.
 
 ---
 
@@ -97,6 +150,7 @@ Add the public command without real scanners.
 
 **Acceptance:**
 
+- Root `shipcheck --help` lists `scan [options]` with description `Run release-readiness checks`, completing the help contract from `cli-output-rules.md`
 - `shipcheck scan` invokes `ScanService` with `ci: false`
 - `shipcheck scan --ci` invokes it with `ci: true`
 - Unknown flags are rejected by the command framework
@@ -104,6 +158,7 @@ Add the public command without real scanners.
 
 **Tests:**
 
+- Root help lists the registered scan command, and scan help exposes `--ci`
 - Local option parsing
 - CI option parsing
 - Unknown option behavior

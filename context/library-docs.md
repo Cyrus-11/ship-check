@@ -139,27 +139,25 @@ export class ScoringService {
 #!/usr/bin/env node
 
 import "reflect-metadata";
-import { CommandFactory } from "nest-commander";
 
-import { AppModule } from "./app.module.js";
-import { readPackageVersion } from "./common/package-version.js";
-
-async function bootstrap(): Promise<void> {
-  await CommandFactory.run(AppModule, {
-    cliName: "shipcheck",
-    version: await readPackageVersion(),
-    usePlugins: false,
-    errorHandler: (error: Error): void => {
-      process.stderr.write(`Shipcheck failed to start: ${error.message}\n`);
-      process.exitCode = 2;
-    },
-  });
-}
+import { bootstrap } from "./bootstrap.js";
 
 void bootstrap();
 ```
 
-The `version` option enables the global `-V, --version` flag. `usePlugins` is explicitly false because plugins are outside v0.1.
+The implementation is in `src/bootstrap.ts`. The factory's `version` option enables global `-V, --version`; `usePlugins: false`, `logger: false`, and `abortOnError: false` disable plugin discovery and Nest logs and allow startup rejection to reach the safe error boundary.
+
+Verified against nest-commander 3.21.0 and its Commander 11.1.0 dependency during feature 02:
+
+- `cliName` alone does not control displayed usage. `@RootCommand({ name: "shipcheck", description: ... })` supplies that metadata through `CommandsModule`.
+- The root provider configures its framework-owned command through `setCommand`, rejecting excess arguments and disabling the implicit `help` subcommand. Bare invocation prints help. `scan` remains a separate feature 03 provider.
+- The `errorHandler` option becomes Commander's exit override. It must throw the parser signal; merely setting `process.exitCode` and returning still permits `process.exit()`.
+- `serviceErrorHandler` recognizes the exact signal captured by the override and distinguishes help/version from usage errors. Other exceptions propagate to the outer safe boundary, including command errors that merely resemble a help signal. Default error serialization is never used.
+- `CommandFactory.run()` awaits application close after parsing/execution. Parser exit codes are applied afterward; a failed close selects exit `2` even if version output already succeeded. Startup rejection occurs before the factory obtains a context it can close.
+- The `outputError` hook replaces parser diagnostics with a stable usage hint, preventing raw argument/error text from appearing in output.
+- Package version comes from a package-relative dynamic JSON import with `{ with: { type: "json" } }`, supported by the Node 22.12+ baseline. The loader validates a non-empty string and does not inspect the target project's manifest.
+
+Verification: production/test TypeScript builds and all 38 tests passed on Windows / Node 24.16.0, including native subprocess lifecycle, error, and metadata cases. Vitest's in-process data-URL import path dropped JSON import attributes during the initial metadata tests (`ERR_IMPORT_ATTRIBUTE_MISSING`), so those cases now run the production loader in native Node subprocesses. Do not replace the runtime JSON loader to accommodate a different test import path.
 
 ### Scan Command
 
