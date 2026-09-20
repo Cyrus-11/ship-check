@@ -1,0 +1,36 @@
+{
+  "name": "shipcheck",
+  "version": "0.1.0",
+  "description": "Check whether a Node.js project is ready to ship",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "bin": {
+    "shipcheck": "./dist/main.js"
+  },
+  "files": ["dist", "README.md", "LICENSE"],
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch",
+    "test:compile": "tsc -p tsconfig.test.json",
+    "pretest": "npm run build && npm run test:compile",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@nestjs/common": "11.2.5",
+    "@nestjs/core": "11.2.5",
+    "execa": "10.0.1",
+    "nest-commander": "3.21.0",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2"
+  },
+  "devDependencies": {
+    "@nestjs/testing": "11.2.5",
+    "@types/node": "22.20.4",
+    "typescript": "5.9.3",
+    "vitest": "5.0.1"
+  }
+}

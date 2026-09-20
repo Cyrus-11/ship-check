@@ -163,6 +163,8 @@ Relative TypeScript imports use the runtime `.js` extension, for example `./app.
 
 Tests remain outside `src/` so production builds only emit runtime code.
 
+Feature 01 adds `tsconfig.test.json` alongside the production build configuration. `npm test` first builds `dist/`, then compiles source and tests into ignored `.test-dist/` using the same TypeScript decorator options. Vitest runs the emitted test JavaScript, while executable smoke tests run the production `dist/main.js`. This verifies Nest constructor injection without relying on a different test transformer to emit metadata.
+
 ---
 
 ## System Boundaries

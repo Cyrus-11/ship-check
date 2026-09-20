@@ -8,6 +8,22 @@ Official documentation was checked on 2026-09-20. Library APIs and engine requir
 
 ## Before Using Any Library
 
+### Scaffold Dependency Selection — 2026-09-20
+
+The feature 01 manifest pins Nest common/core/testing 11.2.5, nest-commander 3.21.0, reflect-metadata 0.2.2, RxJS 7.8.2, Execa 10.0.1, TypeScript 5.9.3, Vitest 5.0.1, and @types/node 22.20.4. Versions and engine/peer ranges were checked through npm metadata before installation. The lockfile records the resolved dependency tree.
+
+Compatibility finding: nest-commander 3.21.0 accepts Nest 12 in its own peer range, but its @golevelup/nestjs-discovery 7.0.3 dependency requires Nest common/core `^11.1.21`. The initial Nest 12 install produced peer warnings, so all Nest packages were changed to 11.2.5 before integration code was written. No engine baseline or product-scope change is required.
+
+TypeScript 5.9 is selected for the documented legacy-decorator/NodeNext toolchain. Tests will be compiled with tsc into `.test-dist/` before Vitest runs the emitted JavaScript; production output remains in `dist/`. This avoids relying on a test transform to emit Nest constructor metadata. Execa is installed now for compiled-executable smoke tests and later belongs behind the production ProcessRunner adapter. Test harnesses may use Execa and Node filesystem APIs directly to inspect and execute compiled artifacts; production adapter boundaries are unchanged.
+
+Verification: the final `npm install --no-audit --no-fund --strict-peer-deps` completed without warnings on Windows with Node 24.16.0/npm 11.13.0. `npm test` with `NO_COLOR=1` passed the production build, test compilation, and six scaffold checks, including constructor injection and rejection of a missing dependency. The CLI help smoke test uses the production `dist/main.js`.
+
+The remaining approved runtime libraries (dotenv, Chalk, Ora) will be installed when their features are implemented. No lint or coverage script is exposed until its tooling is configured. nest-commander brings its own transitive command, discovery, configuration, and prompt dependencies; these do not authorize separate application layers or interactive product features.
+
+Vitest 5.0.1 declares Node `^22.12.0 || ^24.0.0 || >=26.0.0`. The product runtime baseline remains `>=22.12.0`; contributors must use a Node version supported by the test runner, such as Node 22.12+ on the 22.x line or Node 24.x.
+
+### Library Integration Checklist
+
 Before implementing a feature that touches a third-party package:
 
 1. Read `AGENTS.md` for project-specific tooling or skills
@@ -380,7 +396,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["test/**/*.spec.ts"],
+    include: [".test-dist/test/**/*.spec.js"],
     restoreMocks: true,
     clearMocks: true,
     mockReset: true,
@@ -391,6 +407,7 @@ export default defineConfig({
 ### Rules
 
 - Use Node test environment
+- Compile source and tests through `tsconfig.test.json` before Vitest; `npm test` does this automatically through `pretest`, using the same decorator options as the production build
 - Use `vitest run` in CI and the package test script
 - Keep unit tests isolated from real Git and npm processes
 - Integration tests may spawn the compiled Shipcheck CLI
