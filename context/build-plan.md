@@ -224,28 +224,91 @@ Add the public command without real scanners.
 
 Define all project-owned shapes before scanner implementation.
 
-**Implementation:**
+**Status:** Implemented and verified on 2026-09-21. Production/test builds, compiler-only contract checks, and all 75 tests across seven files passed on Windows / Node 24.16.0. Feature 05 is next. The saved `memory.md` update predates this feature and is preserved.
 
-- `ScanContext`
-- `Scanner` contract
-- `ScanStatus`, `ScanResult`, `ReadinessStatus`, and `ScanReport`
-- Package JSON subset type
-- Exit-code constants
-- Scanner weight and threshold constants
-- Canonical scanner order/IDs
+**Outcome and scope:**
 
-**Acceptance:**
+Establish the shared types and policy constants that subsequent scanners, orchestration, scoring, and reporting will consume. Keep current help, version, parsing, cleanup, and shell exits intact. This feature adds no project discovery, filesystem/process adapter, scanner implementation or registration, scoring calculation, report rendering, dependency, or CLI option. Process adapter request/result types remain feature 05; scorer-specific return shapes remain feature 13.
 
-- All scanner IDs are a closed union
-- Result objects cannot omit duration or weight
-- Weights total 100
-- Thresholds exist in one module
-- No terminal-library types appear in domain contracts
+**Contract decisions:**
 
-**Tests:**
+| Contract | Planned shape and ownership |
+| --- | --- |
+| `ScannerId` | Derived from the canonical ordered tuple: `git`, `build`, `test`, `env`; no second handwritten ID union |
+| `ScanStatus` | `passed`, `failed`, `skipped`, `error` |
+| `ReadinessStatus` | `READY`, `REVIEW`, `NOT_READY`; display label `NOT READY` remains reporter-owned |
+| `PackageJson` | Readonly optional `name: string` and readonly optional `scripts` containing optional string `build` and `test` fields; only the subset consumed by v0.1 |
+| `ScanContext` | Readonly `cwd`, `projectName`, `packageJsonPath`, `packageJson: PackageJson`, and `ci`; all required |
+| `ScanResult` | Required `id: ScannerId`, `name`, `status: ScanStatus`, `summary`, `details: string[]`, `durationMs: number`, `weight: number`, matching architecture |
+| `ScanReport` | Required `projectName`, `cwd`, `results: ScanResult[]`, `score: number`, `status: ReadinessStatus`, `gatePassed: boolean`, `durationMs: number`, matching architecture |
+| `Scanner` | Behavioral interface with readonly `id`, `name`, `weight`, and `run(context: ScanContext): Promise<ScanResult>` |
 
-- Constant invariant test for total weight
-- Typecheck covers contract use
+- Use `type` for data and unions, `interface` for the scanner behavior, and type-only imports with `.js` paths. Give each primary type its own file. No Nest, Commander, Execa, Chalk, or Ora types/decorators enter these contracts.
+- `PackageJson` describes a validated in-memory projection, not arbitrary parsed JSON or the entire npm manifest. Feature 06 must narrow unknown input and select supported fields rather than assert parsed data as `PackageJson`. Unsupported fields are ignored; non-string name/script fields are omitted from the projection, preserving later name fallback and missing-script behavior. Do not implement parsing or add new fatal metadata rules in feature 04. Keep blank strings representable so existing discovery/scanner rules decide their meaning.
+- Make context and its package subset readonly at the TypeScript boundary, consistent with feature 06's immutable-context requirement. This is compile-time protection, not a runtime deep-freeze guarantee. Keep result/report arrays as specified in the architecture; introduce no generic deep-readonly utility or branded number types.
+- Weights, durations, and scores remain numbers in the contracts. Runtime validation, score/status consistency, four-result completeness, and gate calculation belong to their later providers; defining types is not proof those runtime invariants hold.
+
+**Constants and dependency direction:**
+
+- Add `SCAN_ORDER` as a readonly literal tuple in `common/constants/scan-order.ts`, frozen at runtime. Derive `ScannerId = (typeof SCAN_ORDER)[number]` in its type file. This is policy data, not the feature 11 injection registry; no `SCANNERS` token or dynamic discovery is added.
+- Add `SCANNER_WEIGHTS` in `common/constants/scoring.ts`: exactly the four IDs, each 25. Use `as const satisfies Record<ScannerId, number>` so missing/extra keys are compile errors while preserving literals; freeze the flat object.
+- In the same scoring file, define frozen `READINESS_THRESHOLDS` with `READY: 90` and `REVIEW: 70`. No duplicate threshold literals in consumers; `NOT_READY` is the eventual below-review fallback, not another threshold.
+- Reuse `common/constants/exit-codes.ts` unchanged (`0`, `1`, `2`); feature 03 already centralized it. No additional exit codes or readiness mapping function.
+- `scan-order.ts` depends on no types; the ID type refers to that tuple; scoring imports only the ID type. Other domain types use type-only imports, avoiding a runtime import cycle.
+
+**Transition from the feature 03 shell:**
+
+Define the complete `ScanReport`, then replace `ScanShellReport` imports in the service, exit selector, command unit tests, and scan probe with `Pick<ScanReport, "gatePassed">`. Delete the temporary type file. The selector permanently needs only this projection; the service temporarily returns the projection until real orchestration can construct a complete report. A future full `ScanReport` is structurally compatible with the selector.
+
+The service still returns `{ gatePassed: false }`, prints nothing, and performs no checks: local/CI exits remain `0`/`1`. Do not use `Partial<ScanReport>`, an unsafe assertion, optional full-report fields, or invented names/paths/scores/results to make the shell look like a completed scan. Update architecture/library notes to state that the full type exists while report assembly remains future work.
+
+**Affected areas (new paths are proposed):**
+
+| Path | Change |
+| --- | --- |
+| `src/common/types/scanner-id.type.ts` | New derived ID union |
+| `src/common/types/scan-status.type.ts`, `readiness-status.type.ts` | New status unions |
+| `src/common/types/package-json.type.ts`, `scan-context.type.ts` | New package subset and readonly context |
+| `src/common/types/scan-result.type.ts`, `scan-report.type.ts` | New complete result/report shapes |
+| `src/common/contracts/scanner.contract.ts` | New scanner interface |
+| `src/common/constants/scan-order.ts`, `scoring.ts` | New canonical policy constants |
+| `src/common/constants/exit-codes.ts` | Reuse; no implementation change planned |
+| `src/scan/scan-shell-report.type.ts` | Remove temporary duplicate shape |
+| `src/scan/scan.service.ts`, `src/commands/select-exit-code.ts` | Use report gate projection |
+| `test/unit/commands/scan.command.spec.ts`, `test/helpers/scan-probe.ts` | Migrate existing test types; retain behavioral assertions |
+| `test/unit/common/constants.spec.ts` | New policy invariant tests |
+| `test/typechecks/domain-contracts.ts` | New compiler-checked positive/negative contract cases, included by existing test tsconfig and never executed |
+| `context/architecture.md`, `library-docs.md`, `build-plan.md`, `progress-tracker.md` | Record contract boundaries, staged service return, and actual verification evidence |
+
+**Ordered implementation:**
+
+1. Add canonical order, derived ID type, weights, and thresholds. Reuse exit constants. Keep IDs and policy values in their designated modules.
+2. Add the remaining domain types and Scanner interface, matching the field table above. Document the validated package subset and compile-time readonly guarantees in architecture.
+3. Migrate shell consumers/tests to the report gate projection and remove the old source file. Remove only the obsolete generated `scan-shell-report.type` artifacts under `dist/scan/` and `.test-dist/src/scan/` after verifying their paths are inside the workspace: tsc does not delete outputs for removed sources. Do not add an unrelated build-system overhaul.
+4. Add policy invariant tests and compiler-checked contract examples. Negative examples use narrowly placed, explained `@ts-expect-error` directives in an uncalled test-only function; no `any`, suppression of real compiler errors, production fixtures, or new test tooling.
+5. Run the checks below and inspect emitted output. Update documentation/tracker with observed evidence, confirm scanner-registry statuses remain accurate, and mark feature 04 complete only after passing. Feature 05 follows.
+
+**Acceptance and verification:**
+
+| Criterion | Verification |
+| --- | --- |
+| Exactly four unique IDs in Git/Build/Tests/Environment order | Runtime invariant test asserts exact tuple and uniqueness |
+| Every scanner has weight 25 and configured total is 100 | Assert exact key coverage, each weight, and sum over canonical IDs |
+| Thresholds and exits match policy | Assert READY 90, REVIEW 70, and existing exit values 0/1/2; no scoring algorithm is tested or added yet |
+| Constants cannot be changed at runtime | Assert the tuple and flat policy maps are frozen |
+| Closed IDs/statuses and complete required fields | Compiler accepts valid context/scanner/result/report examples; rejects an unsupported ID/status and omitted result duration/weight or report field |
+| Scanner contract is asynchronous with immutable identity/context | Compiler rejects incompatible run return, identity reassignment, and context/package-subset mutation |
+| Package subset is safely typed | Compiler accepts absent name/scripts and valid strings; rejects non-string name/build/test values; parsing itself is deferred |
+| Complete reports satisfy the command's narrow dependency | Compiler accepts a full report passed to the exit selector; existing four-case exit tests remain intact |
+| Feature 03 behavior is preserved | Existing compiled CLI suite retains help/version, strict parsing, forwarding, local/CI exits, safe failures, and cleanup assertions |
+| Removed temporary contract is gone | Search source/tests for `ScanShellReport` and obsolete imports; inspect generated output for stale deleted-file artifacts |
+| Domain has no framework/presentation dependency | Review imports and emitted declarations; no terminal symbols, status display labels, or library-specific types |
+
+Run `npm test` with `NO_COLOR=1`; pretest covers production build and test compilation, including the negative type cases. Reuse the existing 70 behavior tests and add only contract/policy coverage; no duplicate subprocess suite or broad new platform tests are needed. Run `git diff --check`. There is no configured lint script. Record the actual platform used; Node minimum, other operating systems, installed npm launchers, and packaging remain separate verification gaps.
+
+**Compatibility evidence:** Manifest, lockfile, and installed TypeScript agree on 5.9.3. Inspected `lib.es5.d.ts` definitions for `Pick`, `Record`, `Readonly`, and `Object.freeze`, plus official [utility types](https://www.typescriptlang.org/docs/handbook/utility-types.html), [typeof types](https://www.typescriptlang.org/docs/handbook/2/typeof-types.html), and [satisfies](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-4-9.html) documentation. These features predate the installed compiler; no dependency/runtime upgrade or new relevant skill is needed.
+
+**Completion:** Implemented the contracts, frozen scanner/scoring constants, and gate-only report projection as planned. Reused exit constants unchanged. Removed `ScanShellReport` and its six obsolete generated artifacts; no old references remain in source, tests, or generated output. `npm test` with `NO_COLOR=1` passed production/test compilation, all expected compiler rejections, and 75 tests across seven files (the existing 70 plus five policy checks). Inspected emitted declarations for required fields, readonly identity/context, derived IDs, and framework-independent types. The existing compiled CLI suite verified unchanged shell/help/exit/cleanup behavior; no separate manual smoke was repeated because the public behavior did not change. `git diff --check` passed. Scoped review found no actionable findings, and scanner-registry entries remain accurately not started. No unresolved feature 04 decisions remain; no commit or push is part of this implementation.
 
 ---
 

@@ -8,7 +8,7 @@ import { ScanCommand } from "../../../src/commands/scan.command.js";
 import { selectExitCode } from "../../../src/commands/select-exit-code.js";
 import { ScanService } from "../../../src/scan/scan.service.js";
 
-import type { ScanShellReport } from "../../../src/scan/scan-shell-report.type.js";
+import type { ScanReport } from "../../../src/common/types/scan-report.type.js";
 
 describe("scan command", (): void => {
   let originalExitCode: typeof process.exitCode;
@@ -53,11 +53,11 @@ describe("scan command", (): void => {
   });
 
   it("waits for the service to finish before assigning an exit", async (): Promise<void> => {
-    let complete: (report: ScanShellReport) => void = (): never => {
+    let complete: (report: Pick<ScanReport, "gatePassed">) => void = (): never => {
       throw new Error("Deferred scan has not initialized");
     };
-    const report = new Promise<ScanShellReport>((resolve): void => { complete = resolve; });
-    const command = new ScanCommand({ scan: (): Promise<ScanShellReport> => report });
+    const report = new Promise<Pick<ScanReport, "gatePassed">>((resolve): void => { complete = resolve; });
+    const command = new ScanCommand({ scan: (): Promise<Pick<ScanReport, "gatePassed">> => report });
 
     const execution = command.run([], { ci: true });
     expect(process.exitCode).toBeUndefined();

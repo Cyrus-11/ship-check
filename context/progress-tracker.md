@@ -12,13 +12,15 @@ Update this file after every completed feature. Any engineer or AI agent reading
 
 **In progress:** None
 
-**Last completed:** 03 Scan Command Shell
+**Last completed:** 04 Domain Contracts and Constants
 
-**Next:** 04 Domain Contracts and Constants
+**Next:** 05 Infrastructure Adapters
 
 **Blockers:** None recorded
 
 **Feature 03:** Implemented and verified on 2026-09-21 against the architecture plan in `build-plan.md`. The shell performs no real checks or reporting yet; local/CI exits are `0`/`1` with the temporary failed-gate result.
+
+**Feature 04:** Implemented and verified on 2026-09-21 against the plan in `build-plan.md`: complete domain contracts, canonical IDs/order/weights/thresholds, and migration from the temporary shell type to a gate projection of `ScanReport`. Real report assembly and scanner execution remain later features.
 
 ---
 
@@ -32,7 +34,7 @@ Update this file after every completed feature. Any engineer or AI agent reading
 
 ### Phase 2 — Core Contracts and Infrastructure
 
-- [ ] 04 Domain Contracts and Constants
+- [x] 04 Domain Contracts and Constants
 - [ ] 05 Infrastructure Adapters
 - [ ] 06 Project Discovery and Scan Context
 
@@ -74,8 +76,8 @@ Update this file after every completed feature. Any engineer or AI agent reading
 
 | Gate                       | Status      | Last verified |
 | -------------------------- | ----------- | ------------- |
-| TypeScript build           | Passed (production and test compilation) | 2026-09-21 |
-| Unit tests                 | Passed (6 scaffold, 4 bootstrap boundary, 7 command/DI checks) | 2026-09-21 |
+| TypeScript build           | Passed (production/test compilation and positive/negative domain contract checks) | 2026-09-21 |
+| Unit tests                 | Passed (6 scaffold, 4 bootstrap boundary, 7 command/DI, 5 domain policy checks) | 2026-09-21 |
 | Integration tests          | Passed (20 bootstrap CLI, 8 native metadata, 25 scan shell checks); real scan fixtures pending | 2026-09-21 |
 | Help/version smoke test    | Root/scan help and version passed; invalid usage returns 2 | 2026-09-21 |
 | Local scan smoke test      | Shell only passed, exit 0; real pipeline pending | 2026-09-21 |
@@ -149,6 +151,20 @@ Add implementation-time decisions below this line with date, reason, and affecte
 
 ## Deviations From Context
 
+### Feature 04 implementation — 2026-09-21
+
+- Added the Scanner interface and separate ScannerId, ScanStatus, ReadinessStatus, PackageJson, ScanContext, ScanResult, and ScanReport types under `src/common/`. Domain types import no framework/presentation libraries
+- ScannerId derives from the frozen `SCAN_ORDER` tuple. Frozen `SCANNER_WEIGHTS` covers exactly four IDs at 25 points each, with READY/REVIEW thresholds centralized at 90/70. Existing EXIT_CODE values are unchanged
+- PackageJson is a readonly validated subset, not untrusted JSON. Future discovery must narrow/select supported string fields; it will omit non-string fields and retain documented name fallback/missing-script behavior. No parser or new fatal metadata rule was implemented
+- Context and nested package metadata are readonly through TypeScript. Result/report fields remain required with number-valued duration/weight/score; runtime ranges, score/gate consistency, and report completeness remain subsequent provider responsibilities
+- Removed ScanShellReport and migrated the shell service, exit selector, and test consumers to `Pick<ScanReport, "gatePassed">`. The shell still returns a failed gate, performs no checks, and prints no report; local/CI exits remain 0/1
+- Removed six obsolete generated artifacts for the deleted temporary type after checking absolute workspace paths. Inspected declarations and verified no old temporary-type references remain in source/tests/generated output
+- Added five policy invariant tests and compiler-only positive/negative examples in `test/typechecks/domain-contracts.ts`. The uncalled examples cover valid contracts, closed IDs/statuses, required fields, async scanner behavior, readonly fields, typed package metadata, weight-key coverage, and full-report compatibility with the exit selector
+- `npm test` with NO_COLOR=1 passed production/test builds, all expected type rejections, and 75 tests across seven files. The existing compiled CLI suite confirms unchanged help, parsing, shell exits, error safety, and cleanup. No additional manual CLI smoke was repeated because public behavior did not change
+- A patch operation partially applied before failing to create `src/common/contracts`. Inspected the exact landed files, created the missing directory, and applied only the remaining edits successfully. No recurring failure or application correction was needed
+- Review checked plan alignment, contract boundaries, emitted declarations, migration, and regression coverage. No actionable findings. `git diff --check` passed; scanner registry still accurately marks all four scanners and their provider registry as not started
+- No dependency/configuration changes. Verified on Windows / Node 24.16.0 only; minimum Node, other OSes, installed npm launchers, packaging, and real scan/report fixtures remain unverified
+
 ### Feature 03 implementation — 2026-09-21
 
 - Registered `ScanCommand` with typed boolean `--ci`, explicit child argument rejection, `ScanModule`/`ScanService`, temporary `ScanShellReport`, and a pure command-layer exit selector using existing constants
@@ -210,12 +226,12 @@ Known blocker:
 
 ```text
 Date: 2026-09-21
-Completed feature: 03 Scan Command Shell
-Files changed: src/bootstrap.ts, src/commands/*, src/scan/*, test/unit/commands/scan.command.spec.ts, test/integration/bootstrap.integration.spec.ts, test/integration/scan-command.integration.spec.ts, test/helpers/scan-probe.ts, README.md, context/architecture.md, context/library-docs.md, context/build-plan.md, context/cli-output-rules.md, context/progress-tracker.md
-Tests run and results: npm test with NO_COLOR=1 passed production build, test compilation, and all 70 tests (6 files)
-Manual verification: root/scan help and version exit 0; local shell exits 0; CI shell exits 1; invalid scan option exits 2 with safe stderr; git diff --check passed
+Completed feature: 04 Domain Contracts and Constants
+Files changed: src/common/constants/scan-order.ts, src/common/constants/scoring.ts, src/common/contracts/scanner.contract.ts, src/common/types/*, src/scan/scan.service.ts, deleted src/scan/scan-shell-report.type.ts, src/commands/select-exit-code.ts, test/unit/common/constants.spec.ts, test/typechecks/domain-contracts.ts, test/unit/commands/scan.command.spec.ts, test/helpers/scan-probe.ts, README.md, context/architecture.md, context/library-docs.md, context/build-plan.md, context/progress-tracker.md
+Tests run and results: npm test with NO_COLOR=1 passed production/test builds, compiler-only positive/negative contract checks, and all 75 tests (7 files)
+Manual verification: emitted declarations inspected; stale deleted-type artifacts removed; no old type references in source/tests/generated output; git diff --check passed. CLI behavior covered by existing compiled suite
 Verification limits: Windows / Node 24.16.0 only; Node 22.12, other OSes, installed npm launcher/packaging, and real scan fixtures remain unverified
-Decision or deviation recorded: shared parser wrapper protects child-command cleanup; explicit child argument rejection; temporary failed-gate result with no report or real checks
-Next feature: 04 Domain Contracts and Constants; replace temporary ScanShellReport with full report contract and reuse existing EXIT_CODE constants
+Decision or deviation recorded: validated readonly package subset; ID union derived from frozen order; frozen scoring constants; gate-only ScanReport projection preserves the shell without fabricating a full report
+Next feature: 05 Infrastructure Adapters; ProcessRunner, FileSystem, Clock, module, and process-start error contract
 Known blocker: None
 ```

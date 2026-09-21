@@ -8,6 +8,8 @@ Features 01–03 provide the TypeScript and NestJS standalone CLI bootstrap and 
 
 The scan shell performs no checks or project discovery and prints no report yet. Its temporary result always has a failed release gate, so `scan` exits `0` and `scan --ci` exits `1`. These are development placeholders, not readiness assessments. Scanners, scoring, and reporting remain unfinished. Only the boolean `--ci` option is accepted; custom paths and flag values are unsupported.
 
+Feature 04 adds shared domain contracts and fixed scanner order, weights, and readiness thresholds. The shell uses only the gate field of the full report type; defining these contracts does not yet execute scans or assemble reports.
+
 ## Development
 
 The runtime baseline is Node.js 22.12+. For development and tests, use Node 22.12+ on the 22.x line or Node 24.x with npm; these versions satisfy the selected Vitest release's engine range.

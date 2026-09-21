@@ -450,6 +450,10 @@ const scanner = moduleRef.get(GitScanner);
 
 **Official docs:** <https://www.typescriptlang.org/tsconfig>
 
+Feature 04 uses the installed TypeScript 5.9.3 with no compiler or dependency change. Domain contracts use type-only imports, a scanner ID union derived with `typeof SCAN_ORDER`, and `as const satisfies Record<ScannerId, number>` for policy coverage. `Object.freeze` protects the flat policy objects and tuple at runtime. The shell service and exit selector use `Pick<ScanReport, "gatePassed">` while complete reports await orchestration. Context/package readonly fields protect typed consumers but do not validate untrusted JSON or deep-freeze runtime objects.
+
+The definitions for `Pick`, `Record`, `Readonly`, and `Object.freeze` were inspected in installed `lib.es5.d.ts`, alongside official [utility types](https://www.typescriptlang.org/docs/handbook/utility-types.html), [typeof types](https://www.typescriptlang.org/docs/handbook/2/typeof-types.html), and [satisfies](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-4-9.html) documentation. Compiler-only positive/negative examples live in `test/typechecks/domain-contracts.ts`, included by the existing test tsconfig. Their uncalled function is never executed by Vitest; explained `@ts-expect-error` directives fail compilation if the expected rejection disappears.
+
 ### Runtime Config
 
 ```json

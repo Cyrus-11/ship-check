@@ -40,7 +40,7 @@ With nest-commander 3.21.0 / Commander 11.1.0, the root and child commands each 
 
 `src/common/package-version.ts` imports Shipcheck's own package metadata using a URL relative to its compiled module, independent of the scanned project's working directory. This package read does not belong to scanned-project discovery or the future `FileSystem` adapter.
 
-Feature 03 registers `ScanCommand` alongside the root provider. `CommandsModule` imports `ScanModule`, which exports `ScanService`. The command rejects positional arguments explicitly, normalizes its boolean `--ci` option, awaits the service, and selects the completed-command exit through `selectExitCode`. The temporary service returns only `{ gatePassed: false }`, with no discovery, scanners, or output: the shell exits `0` locally and `1` in CI. The full contracts and pipeline below describe subsequent features; feature 04 replaces the temporary `ScanShellReport` type.
+Feature 03 registers `ScanCommand` alongside the root provider. `CommandsModule` imports `ScanModule`, which exports `ScanService`. The command rejects positional arguments explicitly, normalizes its boolean `--ci` option, awaits the service, and selects the completed-command exit through `selectExitCode`. The temporary service returns only `{ gatePassed: false }`, with no discovery, scanners, or output: the shell exits `0` locally and `1` in CI. Feature 04 defines the full domain contracts below and replaces `ScanShellReport` with `Pick<ScanReport, "gatePassed">` in the service and exit selector. Full report assembly remains a later feature; the selector will accept a complete report without changing its narrow dependency.
 
 ---
 
@@ -201,25 +201,45 @@ Dependencies flow inward through contracts. Scanners never import the command or
 
 ## Core Contracts
 
+### Canonical Policy and IDs
+
+`common/constants/scan-order.ts` defines the frozen literal tuple `SCAN_ORDER`: `git`, `build`, `test`, `env`. `ScannerId` is derived from this tuple in `common/types/scanner-id.type.ts`. This is policy data; the `SCANNERS` injection registry remains feature 11.
+
+`common/constants/scoring.ts` defines frozen `SCANNER_WEIGHTS` (25 for each ID, total 100) and `READINESS_THRESHOLDS` (`READY: 90`, `REVIEW: 70`). The weight map is checked against `Record<ScannerId, number>`. The existing `EXIT_CODE` constants are reused unchanged. Domain contracts contain no framework or terminal-library types, and use type-only imports.
+
+### Package Metadata Subset
+
+```typescript
+export type PackageJson = {
+  readonly name?: string;
+  readonly scripts?: {
+    readonly build?: string;
+    readonly test?: string;
+  };
+};
+```
+
+This is a validated in-memory projection, not arbitrary parsed JSON or the complete npm manifest. Feature 06 must narrow unknown input, select supported string fields, and omit unsupported or non-string fields without asserting raw JSON as `PackageJson`. Name fallback and missing-script behavior then apply as documented. Blank strings remain representable for discovery/scanner checks. No parsing or project access is implemented by these types.
+
 ### Scan Context
 
 ```typescript
 export type ScanContext = {
-  cwd: string;
-  projectName: string;
-  packageJsonPath: string;
-  packageJson: PackageJson;
-  ci: boolean;
+  readonly cwd: string;
+  readonly projectName: string;
+  readonly packageJsonPath: string;
+  readonly packageJson: PackageJson;
+  readonly ci: boolean;
 };
 ```
 
-The context is created once by `ScanService`. Scanners do not independently choose a working directory.
+The context will be created once by `ScanService`. Scanners do not independently choose a working directory. Context and nested package fields are readonly through their TypeScript contracts; this is not a runtime deep-freeze guarantee.
 
 ### Scanner Contract
 
 ```typescript
 export interface Scanner {
-  readonly id: ScanResult["id"];
+  readonly id: ScannerId;
   readonly name: string;
   readonly weight: number;
   run(context: ScanContext): Promise<ScanResult>;
@@ -234,7 +254,7 @@ An interface is used here because scanner implementations share an extendable be
 export type ScanStatus = "passed" | "failed" | "skipped" | "error";
 
 export type ScanResult = {
-  id: "git" | "build" | "test" | "env";
+  id: ScannerId;
   name: string;
   status: ScanStatus;
   summary: string;
@@ -255,6 +275,8 @@ export type ScanReport = {
   durationMs: number;
 };
 ```
+
+Each primary type lives in its own `common/types/*.type.ts` file. All result/report fields remain required. Durations, weights, and scores are numbers; types alone do not enforce runtime ranges, report completeness, or score/status/gate consistency. Those checks belong to subsequent providers. Result and report arrays retain the mutable shapes above.
 
 ---
 
