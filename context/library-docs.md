@@ -150,9 +150,9 @@ The implementation is in `src/bootstrap.ts`. The factory's `version` option enab
 Verified against nest-commander 3.21.0 and its Commander 11.1.0 dependency during feature 02:
 
 - `cliName` alone does not control displayed usage. `@RootCommand({ name: "shipcheck", description: ... })` supplies that metadata through `CommandsModule`.
-- The root provider configures its framework-owned command through `setCommand`, rejecting excess arguments and disabling the implicit `help` subcommand. Bare invocation prints help. `scan` remains a separate feature 03 provider.
+- The root provider configures its framework-owned command through `setCommand`, rejecting excess arguments and disabling the implicit `help` subcommand. Bare invocation prints help. Feature 03 adds a separate `ScanCommand` provider.
 - The `errorHandler` option becomes Commander's exit override. It must throw the parser signal; merely setting `process.exitCode` and returning still permits `process.exit()`.
-- `serviceErrorHandler` recognizes the exact signal captured by the override and distinguishes help/version from usage errors. Other exceptions propagate to the outer safe boundary, including command errors that merely resemble a help signal. Default error serialization is never used.
+- Feature 02's `serviceErrorHandler` recognized the exact root signal captured by the override. Feature 03 uses a shared `throwParserExit` helper for root and child overrides: it throws a project-owned `ParserExitSignal`, and the service handler recognizes only that wrapper. Other exceptions propagate to the outer safe boundary, including command errors that merely resemble a help signal. Default error serialization is never used.
 - `CommandFactory.run()` awaits application close after parsing/execution. Parser exit codes are applied afterward; a failed close selects exit `2` even if version output already succeeded. Startup rejection occurs before the factory obtains a context it can close.
 - The `outputError` hook replaces parser diagnostics with a stable usage hint, preventing raw argument/error text from appearing in output.
 - Package version comes from a package-relative dynamic JSON import with `{ with: { type: "json" } }`, supported by the Node 22.12+ baseline. The loader validates a non-empty string and does not inspect the target project's manifest.
@@ -195,7 +195,9 @@ export class ScanCommand extends CommandRunner {
 }
 ```
 
-Confirm the exact boolean option-parser behavior with the installed version and its types.
+Feature 03 checked the installed 3.21.0 source/types and Commander 11.1.0. A value-free `--ci` invokes its parser, which returns `true`; absent options normalize to `false`. No environment binding or option default is needed. Compiled CLI coverage exercises option forwarding rather than only calling the parser method directly.
+
+The snippet above shows delegation only. The implementation also overrides `setCommand()` to call `allowExcessArguments(false)` and `exitOverride(throwParserExit)` on the child. nest-commander independently constructs commands and attaches them with `addCommand()`, so these root settings are not inherited. Its `allowExcessArgs` metadata only enables the setting when truthy; `false` does not disable Commander's permissive default. Factory output configuration is applied to each command, preserving safe child diagnostics. The temporary `ScanService` returns a failed gate until real checks exist and does not render a report.
 
 ### Rules
 

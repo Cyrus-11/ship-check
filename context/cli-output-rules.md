@@ -215,7 +215,7 @@ CI mode does not:
 
 ## Help Output
 
-Implementation sequencing: feature 02 supplies product help and version with `Usage: shipcheck [options]`. Feature 03 registers `scan`, adds its help entry and `--ci`, and completes the final help surface below. This sequencing adjustment was approved on 2026-09-20; feature 02 must not advertise an unimplemented scan command.
+Implementation sequencing: feature 02 supplied product help and version. Feature 03 registers `scan`, adds its help entry and `--ci`, and completes the help surface below. This sequencing adjustment was approved on 2026-09-20. The temporary scan shell produces no report and evaluates no checks; its local/CI exits are `0`/`1` until the pipeline is implemented. Completed-scan output rules apply once reporting is connected.
 
 Help must communicate only the v0.1 surface:
 
@@ -226,18 +226,24 @@ Usage: shipcheck [options] [command]
 
 Check whether a Node.js project is ready to ship
 
-Commands:
-  scan [options]  Run release-readiness checks
-
 Options:
   -V, --version   output the version number
   -h, --help      display help for command
+
+Commands:
+  scan [options]  Run release-readiness checks
 ```
 
 The scan command exposes only:
 
 ```text
---ci  Enforce the release gate through process exit codes
+Usage: shipcheck scan [options]
+
+Run release-readiness checks
+
+Options:
+  --ci        Enforce the release gate through process exit codes
+  -h, --help  display help for command
 ```
 
 Do not advertise roadmap features.

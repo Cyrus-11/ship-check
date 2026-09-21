@@ -139,30 +139,82 @@ These findings were checked against installed source/types and the official [fac
 
 Add the public command without real scanners.
 
-**Implementation:**
+**Status:** Implemented and verified on 2026-09-21. Production/test builds and all 70 tests across six files passed on Windows / Node 24.16.0. Feature 04 is next. The architecture plan below records the chosen design and verification criteria.
 
-- Add `ScanCommand`
-- Add `--ci` boolean option
-- Add typed `ScanCommandOptions`
-- Add a temporary `ScanService` contract returning a minimal report
-- Add central exit-code selector
-- Keep command free of business logic
+**Restored baseline:** Features 01 and 02 are implemented. Local `main` is at `b1929e0` (the feature 02 memory commit); compared with memory's recorded `1ca408b`, only `memory.md` changed. The working tree was clean before this planning update. Memory's claim that its save is uncommitted is superseded. The earlier 38-test pass is historical evidence; tests were not rerun during planning.
 
-**Acceptance:**
+**Outcome and scope:**
 
-- Root `shipcheck --help` lists `scan [options]` with description `Run release-readiness checks`, completing the help contract from `cli-output-rules.md`
-- `shipcheck scan` invokes `ScanService` with `ci: false`
-- `shipcheck scan --ci` invokes it with `ci: true`
-- Unknown flags are rejected by the command framework
-- No path argument is accepted
+- Register `shipcheck scan` and its single product option, boolean `--ci`, and complete root/scan help
+- Prove option normalization, service injection, centralized exit selection, safe parser errors, and asynchronous cleanup through the compiled executable
+- Keep the existing dependencies and Node baseline
+- Discovery, project-file reads, subprocess execution, four-scanner registration, scoring, and terminal reports remain their later features
+- Feature 15 will verify exits against real rendered reports; feature 03 establishes the command boundary using a temporary service result
 
-**Tests:**
+**Installed API findings and design decisions:**
 
-- Root help lists the registered scan command, and scan help exposes `--ci`
-- Local option parsing
-- CI option parsing
-- Unknown option behavior
-- Exit-code selector table
+- Manifest, lockfile, and installed package agree on nest-commander 3.21.0, Commander 11.1.0, and Nest 11.2.5. No applicable installed Nest/Commander skill or documentation MCP was found. Reviewed the official [command](https://nest-commander.jaymcdoniel.dev/en/features/commander/) and [factory](https://nest-commander.jaymcdoniel.dev/en/features/factory/) documentation and [Commander 11.1.0](https://github.com/tj/commander.js/tree/v11.1.0), then checked installed source/types for version-specific behavior.
+- `@Command()` supplies injectable command metadata; register `ScanCommand` as a provider in `CommandsModule`, importing a small `ScanModule` that exports `ScanService`. Keep the existing root command and single factory bootstrap.
+- Use `@Option({ flags: "--ci", description: "Enforce the release gate through process exit codes" })` with a parser returning `true`. Do not define a value argument, alias, negated option, default, or environment binding. Normalize absent options with `options.ci === true`; ambient `CI` does not enable the CLI flag.
+- nest-commander constructs each command independently and attaches it with `addCommand()`. Root strictness and the root exit override are not inherited. Its `allowExcessArgs` metadata only enables excess arguments when truthy; setting it to `false` does not disable the Commander default. Explicitly call `allowExcessArguments(false)` in `ScanCommand.setCommand()`, following the root's existing pattern. Unknown options remain rejected by default.
+- Child help/errors need their own throwing `exitOverride`, otherwise Commander can terminate before Nest cleanup. Introduce one command-layer parser-exit helper shared by the factory `errorHandler` and scan's `setCommand()`. It wraps the actual parser callback error in a project-owned `ParserExitSignal` and throws. Only that wrapper is recognized by bootstrap's `serviceErrorHandler`; ordinary errors merely carrying `commander.helpDisplayed` or `exitCode: 0` still fail. This replaces bootstrap's root-only captured-object mechanism while preserving its safety intent. Do not classify arbitrary errors by their `code` property.
+- Keep the parser wrapper/helper independent of command providers to avoid an import cycle. It carries only the normalized parser exit decision and optional internal cause; it never prints raw errors. Help/version select `0`, parser failures select `2`. Bootstrap applies that decision after factory shutdown, and unexpected execution/cleanup failures still override it with safe stderr and `2`.
+- Use a temporary result containing only `gatePassed: boolean`, returned by `ScanService.scan({ ci: boolean })`. The concrete shell returns `{ gatePassed: false }` in both modes; it cannot claim release readiness before checks exist. It emits no fabricated rows, score, or report. Thus the development shell exits `0` locally and `1` with `--ci`, with empty stdout/stderr on normal execution. README must state that this stage performs no checks and its CI result is a placeholder. Full domain contracts remain feature 04; retain structural compatibility with the future `ScanReport` and remove the temporary result type then.
+- Keep the exit selector in `commands/`: local completion selects `EXIT_CODE.SUCCESS`; CI selects success only for `gatePassed: true`, otherwise `EXIT_CODE.GATE_FAILED`. Fatal failures propagate to bootstrap. Do not calculate scores or thresholds in the command.
+
+**Implemented areas (paths marked new were introduced by this feature):**
+
+| Path | Planned responsibility |
+| --- | --- |
+| `src/commands/scan.command.ts` (new) | Strict command metadata, boolean parsing, service delegation, completed-command exit assignment |
+| `src/commands/scan-command.options.ts` (new) | Parsed option type with optional `ci` |
+| `src/commands/select-exit-code.ts` (new) | Pure local/CI gate-to-exit mapping using existing constants |
+| `src/commands/parser-exit.ts` (new) | Shared throwing parser boundary and recognizable signal |
+| `src/scan/scan.module.ts` (new) | Register and export temporary service |
+| `src/scan/scan.service.ts` (new) | Injectable shell implementing the asynchronous scan method |
+| `src/scan/scan-shell-report.type.ts` (new, temporary) | Minimal gate result; superseded by feature 04's report contract |
+| `src/commands/commands.module.ts` | Import `ScanModule` and register `ScanCommand` alongside root |
+| `src/bootstrap.ts` | Use shared parser signal handling; preserve factory lifecycle and safe diagnostics |
+| `test/unit/commands/` (new tests) | Delegation, awaiting completion, exit matrix, and provider injection |
+| `test/integration/scan-command.integration.spec.ts` (new) | Compiled parser, help, exit, and cleanup behavior |
+| `test/integration/bootstrap.integration.spec.ts`, `test/unit/bootstrap.spec.ts`, `test/helpers/` | Update help expectations and add test-only scan/lifecycle probes |
+| `README.md`, relevant context files | Explain staged behavior, record implementation evidence, keep help/API documentation accurate |
+
+**Ordered implementation:**
+
+1. Add the temporary service/result and module. Keep the service free of project access, output, and exit decisions. Define typed command options and the pure exit selector using the existing `EXIT_CODE` constants.
+2. Add the shared parser signal boundary and connect it to bootstrap. Preserve help/version behavior, fixed safe diagnostics, cleanup-error precedence, and rejection of lookalike success errors. Do not introduce another Nest context or a direct Commander dependency.
+3. Register `ScanCommand`. In `setCommand()`, apply explicit argument rejection and the shared throwing exit override to the framework-owned command. Parse only boolean `--ci`; await one service call before assigning the selected `process.exitCode`.
+4. Add focused unit/DI tests and compiled CLI coverage. Reuse tsc-compiled tests and native subprocess probes. Keep all injected gate outcomes, failures, lifecycle markers, and call observations under `test/`; add no production test switches.
+5. Update root-help expectations to include `[command]` and the scan listing. Replace the old test that rejects `scan` with an actually unknown command. Preserve bare root help and disabled implicit `help` command. Capture actual framework help formatting; align the illustrative output documentation with it instead of introducing a custom renderer solely to reorder sections.
+6. Run verification below. Update README, architecture/library notes where behavior changed, and the tracker with actual outcomes. Confirm the scanner registry still accurately marks all four scanners and the registry provider as not started. Mark feature 03 complete only after these gates pass; feature 04 is next.
+
+**Acceptance and verification:**
+
+| Scenario | Observable result |
+| --- | --- |
+| Root help, `-h`, and bare invocation | Root help lists `scan [options]` and its exact description; no service call; stdout, empty stderr, exit `0` |
+| `scan --help` and `scan -h` | Scan usage plus documented `--ci` and built-in help; no scan execution; exit `0`; asynchronous cleanup completes |
+| `scan` | Exactly one service call with `{ ci: false }`; normal shell output empty; exit `0` after service completion |
+| `scan --ci` | Exactly one service call with `{ ci: true }`; shell returns failed gate, output empty, exit `1` preserved through shutdown |
+| `scan` with ambient `CI=true` | Still delegates `{ ci: false }`; no implicit mode selection |
+| Local/CI with injected gate true/false | Full four-case exit matrix: local `0` for either result; CI `0`/`1`; no assignment while the service promise is pending |
+| `scan --unknown`, `scan ./project`, `scan -- ./project` | Stable usage stderr, empty stdout, exit `2`, no service call, cleanup completed |
+| `scan --ci=false`, `scan --ci true`, `scan --no-ci` | Reject value-bearing/negated forms with usage exit `2`; no scan execution |
+| Root `--ci`, unknown command, positional root path | Existing strict usage behavior retained |
+| Injected scan rejection, including a help-signal lookalike | Safe fatal stderr, exit `2`, initialized application cleanup attempted; no secret marker, stack, or raw error |
+| Cleanup rejection after scan or child help | Fatal exit `2` overrides the command/parser result |
+| Normal shell and help in an unrelated temporary directory | No project discovery, Git/npm command, network listener, or target-file mutation; no Nest logs, ANSI, or spinner artifacts |
+| Existing version, metadata, and bootstrap regression cases | Continue passing, with only intentional root-help changes |
+
+- Assert stdout, stderr, service invocation, and exit codes independently. Observe forwarding through a test-only production-module preload; do not infer it only from calling `run()` directly.
+- Use a Nest testing module with a service override to prove real command constructor injection, and a deferred service promise to prove exit selection waits for completion. Restore `process.exitCode` and mocks after each unit test.
+- Use compiled subprocess lifecycle probes for successful scan, child help, parser failure, service rejection, and cleanup rejection. Preserve the existing no-network and secret-marker checks.
+- Run `npm test` with `NO_COLOR=1`; its pretest already runs the required production build and test compilation. No lint script currently exists.
+- Manually run compiled root help, scan help, local shell, CI shell, and an invalid scan option, checking streams and exit codes. Run `git diff --check`.
+- Record the actual Node/OS used. Minimum-Node/other-OS execution and installed npm launcher/package checks remain unverified until exercised; packaging remains feature 17.
+
+**Completion:** The planned conservative temporary gate result and silent shell are implemented, explicitly limited to this development stage. `npm test` with `NO_COLOR=1` passed production/test compilation and 70 tests: the existing 38 plus seven command unit/DI cases and 25 compiled scan cases. Manual root/scan help, version, local/CI shell, and invalid scan option checks produced the expected streams and exits. Scoped review found no actionable findings. All four scanners and the registry remain not started; no real scan/report or installed-package verification is claimed. No unresolved feature 03 decision remains.
 
 ---
 

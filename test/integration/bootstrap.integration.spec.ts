@@ -52,11 +52,13 @@ describe("compiled CLI bootstrap", (): void => {
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe("");
     expect(result.stdout).toBe(
-      "Usage: shipcheck [options]\n\n" +
+      "Usage: shipcheck [options] [command]\n\n" +
       "Check whether a Node.js project is ready to ship\n\n" +
       "Options:\n" +
-      "  -V, --version  output the version number\n" +
-      "  -h, --help     display help for command\n",
+      "  -V, --version   output the version number\n" +
+      "  -h, --help      display help for command\n\n" +
+      "Commands:\n" +
+      "  scan [options]  Run release-readiness checks\n",
     );
   }, 15_000);
 
@@ -68,7 +70,7 @@ describe("compiled CLI bootstrap", (): void => {
     expect(result.stderr).toBe("");
   }, 15_000);
 
-  it.each(["--unknown", "scan", "help", "./project", "--ci"])(
+  it.each(["--unknown", "unknown", "help", "./project", "--ci"])(
     "rejects unsupported usage %s",
     async (arg: string): Promise<void> => {
       const result = await runCli([arg]);
