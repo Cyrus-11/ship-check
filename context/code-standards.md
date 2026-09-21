@@ -14,7 +14,7 @@ Implementation rules for Shipcheck v0.1. Every coding session must follow these 
 - **Determinism matters** — scanner order, messages, score, and plain output must be stable
 - **Failures are data** — repository failures become results; unexpected failures become `error` results
 - **Simple over clever** — explicit providers and small services are preferred to reflection or auto-discovery
-- **Security is part of correctness** — never leak environment values or execute through a shell
+- **Security is part of correctness** — never leak environment values or construct shell commands; only Execa's internal Windows npm.cmd launcher is permitted as documented in architecture
 
 ---
 
@@ -169,6 +169,7 @@ Do not use inheritance between scanners. Shared behavior belongs in a small coll
 
 - Only `ProcessRunner` imports `execa`
 - Never use `shell: true`
+- Allow only native .exe/.com or the resolved npm.cmd launcher on Windows; the latter's Execa-managed cmd.exe invocation is the approved exception
 - Pass the executable and argument array separately
 - Always pass an explicit absolute `cwd`
 - Always pass an explicit timeout
@@ -180,15 +181,7 @@ Do not use inheritance between scanners. Shared behavior belongs in a small coll
 - Preserve the parent environment unless the scanner documents an override
 - Test scanner adds `CI: "true"`; no other scanner changes it
 
-```typescript
-const result = await execa(request.file, request.args, {
-  cwd: request.cwd,
-  env: request.env,
-  timeout: request.timeoutMs,
-  reject: false,
-  maxBuffer: 1_000_000,
-});
-```
+See the implemented invocation and version-specific failure mapping in `context/library-docs.md`. Capture bytes with `encoding: "buffer"`; classify failure flags before checking numeric exits. Timeouts use the documented synthetic exit code, while operational failures throw safe project-owned errors.
 
 Confirm option names against the installed Execa documentation before implementation.
 

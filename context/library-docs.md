@@ -218,36 +218,19 @@ The snippet above shows delegation only. The implementation also overrides `setC
 
 Execa is used only inside `ProcessRunner`. Current Execa is ESM-first, which is why Shipcheck uses NodeNext modules.
 
-### Adapter Pattern
+### Implemented Adapter — Feature 05
 
-```typescript
-import { execa } from "execa";
+Installed Execa 10.0.1 was checked against its exported types, source, and versioned [Windows](https://github.com/sindresorhus/execa/blob/v10.0.1/docs/windows.md), [errors](https://github.com/sindresorhus/execa/blob/v10.0.1/docs/errors.md), and [termination](https://github.com/sindresorhus/execa/blob/v10.0.1/docs/termination.md) documentation. No dependency change was needed.
 
-export class ProcessRunner {
-  public async run(request: ProcessRequest): Promise<ProcessResult> {
-    try {
-      const result = await execa(request.file, request.args, {
-        cwd: request.cwd,
-        env: request.env,
-        timeout: request.timeoutMs,
-        reject: false,
-        maxBuffer: 1_000_000,
-      });
+ProcessRunner validates an absolute cwd, separate executable/argument values, environment overrides, and an integer timeout in Node's supported 1–2,147,483,647 ms range. It snapshots the inherited environment, applies overrides (undefined removes a key), normalizes Windows key casing, and sets extendEnv:false. It never mutates process.env or adds CI itself.
 
-      return {
-        exitCode: result.exitCode ?? 1,
-        stdout: result.stdout,
-        stderr: result.stderr,
-        timedOut: result.timedOut,
-      };
-    } catch (error: unknown) {
-      throw new ProcessStartError(request.file, { cause: error });
-    }
-  }
-}
-```
+Invocation uses shell:false, reject:false, preferLocal:false, stdin:ignore, captured stdout/stderr, encoding:buffer, buffer:true, stripFinalNewline:false, verbose:none, windowsHide:true, cleanup:true, killDescendants:true, and forceKillAfterDelay:5000. The 1,000,000-byte cap is per stream: Execa's text encoding counts characters, so byte capture is decoded only for ProcessResult. Captured output and raw causes remain private.
 
-This is the intended mapping, not a promise that every property name is identical across Execa majors. Confirm against installed types.
+Windows lookup uses FileSystem before launch: otherwise a missing command can fall through to cmd.exe and appear as ordinary exit 1. Native .exe/.com files and the resolved npm.cmd launcher are supported. The user approved Execa's internal cmd.exe launcher for npm.cmd; Shipcheck never constructs a shell command. Arbitrary shebang/batch launchers and App Execution Aliases that deny metadata access fail safely. PATH/PATHEXT order, quoted directories, current-directory control, and case-insensitive environment keys are explicit. No direct dependency on Execa's transitive lookup library is added.
+
+Failure mapping checks start errors and output-limit/I/O errors before timeouts, signals, and numeric exits. Missing commands/cwd and start failures throw ProcessStartError. Invalid requests, output limits, signals/cancellation, and unexpected adapter failures throw ProcessExecutionError with a safe reason and fixed message. An output-limit failure remains an error even with exitCode 0. Timeouts return timedOut:true and synthetic exitCode 1; ordinary non-zero child exits are returned unchanged. Never use an unconditional exitCode fallback or label every caught exception a start failure.
+
+Execa's descendant cleanup is best-effort (process groups on POSIX; taskkill on Windows). Grace time and OS scheduling can extend the timeout; escaped descendants and total subprocess memory are not contained. If Windows denies taskkill, Execa can kill only the direct process and inherited descendant pipes may delay settlement. Native process-tree verification requires normal process-management permissions. No raw cause, stack, arguments, or output belongs in public diagnostics.
 
 ### Rules
 

@@ -12,15 +12,17 @@ Update this file after every completed feature. Any engineer or AI agent reading
 
 **In progress:** None
 
-**Last completed:** 04 Domain Contracts and Constants
+**Last completed:** 05 Infrastructure Adapters
 
-**Next:** 05 Infrastructure Adapters
+**Next:** 06 Project Discovery and Scan Context
 
 **Blockers:** None recorded
 
 **Feature 03:** Implemented and verified on 2026-09-21 against the architecture plan in `build-plan.md`. The shell performs no real checks or reporting yet; local/CI exits are `0`/`1` with the temporary failed-gate result.
 
 **Feature 04:** Implemented and verified on 2026-09-21 against the plan in `build-plan.md`: complete domain contracts, canonical IDs/order/weights/thresholds, and migration from the temporary shell type to a gate projection of `ScanReport`. Real report assembly and scanner execution remain later features.
+
+**Feature 05:** Implemented and verified on 2026-09-21 against the approved plan. Production/test compilation and all 139 tests across 11 files passed on Windows / Node 24.16.0. The user approved Execa's internal Windows npm.cmd launcher while retaining shell:false and separate executable/argument values. No scanner or scan-shell integration was added.
 
 ---
 
@@ -35,7 +37,7 @@ Update this file after every completed feature. Any engineer or AI agent reading
 ### Phase 2 — Core Contracts and Infrastructure
 
 - [x] 04 Domain Contracts and Constants
-- [ ] 05 Infrastructure Adapters
+- [x] 05 Infrastructure Adapters
 - [ ] 06 Project Discovery and Scan Context
 
 ### Phase 3 — Scanners
@@ -77,8 +79,8 @@ Update this file after every completed feature. Any engineer or AI agent reading
 | Gate                       | Status      | Last verified |
 | -------------------------- | ----------- | ------------- |
 | TypeScript build           | Passed (production/test compilation and positive/negative domain contract checks) | 2026-09-21 |
-| Unit tests                 | Passed (6 scaffold, 4 bootstrap boundary, 7 command/DI, 5 domain policy checks) | 2026-09-21 |
-| Integration tests          | Passed (20 bootstrap CLI, 8 native metadata, 25 scan shell checks); real scan fixtures pending | 2026-09-21 |
+| Unit tests                 | Passed (22 prior checks plus 52 infrastructure boundary/DI checks) | 2026-09-21 |
+| Integration tests          | Passed (53 prior checks plus 12 native infrastructure checks); real scan fixtures pending | 2026-09-21 |
 | Help/version smoke test    | Root/scan help and version passed; invalid usage returns 2 | 2026-09-21 |
 | Local scan smoke test      | Shell only passed, exit 0; real pipeline pending | 2026-09-21 |
 | CI exit-code smoke test    | Shell exit 1 passed; injected gate exit matrix passed; real report enforcement pending | 2026-09-21 |
@@ -150,6 +152,26 @@ Add implementation-time decisions below this line with date, reason, and affecte
 ---
 
 ## Deviations From Context
+
+### Feature 05 implementation and verification — 2026-09-21
+
+- Added process request/result contracts, safe ProcessStartError/ProcessExecutionError, centralized execution limits, and injectable ProcessRunner/FileSystem/Clock exported by InfrastructureModule. The temporary ScanService remains unchanged and no dependency was added
+- ProcessRunner preserves ordinary exits, normalizes timeouts to synthetic exit 1, distinguishes operational failures, captures at most 1,000,000 bytes per stream, closes stdin, and keeps parent/request environments unchanged. Windows lookup prevents missing executable fallback from masquerading as a repository failure; read-only filesystem access is centralized
+- Installed Execa 10.0.1 types/source and versioned documentation were inspected. Its full result generic conflicted under exactOptionalPropertyTypes; a private Pick of consumed result fields avoids widening public types or using a production assertion. Exported runner declarations contain only project-owned process contracts
+- Native checks exercise actual Node output/exits, literal arguments/stdin EOF, unavailable command/cwd, timeouts, Unicode output limits, npm build/test in a path with spaces, environment preservation, npm descendant cleanup, filesystem reads, and production Nest injection. Mocked tests cover access denial, signals/cancellation, I/O failures, malformed results, Windows lookup policies, and safe error messages
+- Initial sandbox execution passed 63/64 focused checks but denied taskkill, leaving the npm tree alive. Confirmed Windows Access denied, identified only fixture-owned ancestry, and cleaned it up with normal process permissions. All 64 focused checks then passed outside the sandbox. The fixture now records both script/child IDs and has an independent deadline/emergency cleanup
+- The first full-suite run passed 138/139 checks: npm's two-second timeout expired before the tree script created its PID marker under parallel load. Used recover to isolate this test timing issue and aligned the fixture timeout with the existing ten-second npm smoke allowance. The complete rerun passed production/test compilation and all 139 tests across 11 files with NO_COLOR=1 and normal Windows process-management permissions
+- Scoped review covered plan alignment, error/output safety, dependency boundaries, environment immutability, DI, and integration evidence. No actionable findings remained. Scanner registry verified accurate: all four scanners and registry provider are still not started. Existing 75 CLI/domain checks remain passing
+- Limits: verification used Windows / Node 24.16.0; minimum Node 22.12, POSIX native signal/process-group behavior, and installed Shipcheck packaging remain unverified. Arbitrary Windows shebang/batch launchers and metadata-denied App Execution Aliases are unsupported. Descendant cleanup is best-effort; when taskkill is denied, inherited pipes may delay settlement. This is not a sandbox or hard wall-clock deadline
+- Next feature: 06 Project Discovery and Scan Context. Feature 05 is not committed or pushed; memory.md was consolidated at the user's save request after implementation and review
+
+### Approved Windows launcher clarification for Feature 05 — 2026-09-21
+
+- Original architecture said “Never execute through a shell”; code standards require separate executable/arguments and prohibit shell:true
+- Installed Execa 10.0.1 uses cmd.exe internally for npm.cmd even when the caller sets shell:false. Its ordinary Windows missing-command fallback can also return exit 1 with no ENOENT, so the plan includes read-only executable lookup before launch
+- Approved clarification: permit Execa's internal Windows npm launcher while Shipcheck continues using separate file/argument values, shell:false, and no explicit shell command construction. This preserves the installed npm launcher behavior without inventing version-manager/npm layouts
+- The user authorized the recommended approach and implementation. Architecture and standards now allow this narrow exception; unsupported Windows shebang/batch launchers and App Execution Aliases that deny metadata access fail safely
+- Full design, failure mapping, byte-limit handling, cleanup limits, proposed files, and verification are in feature 05 of the build plan
 
 ### Feature 04 implementation — 2026-09-21
 

@@ -1,88 +1,59 @@
 # Shipcheck project memory
 
-Updated: 2026-09-21 12:06:25 UTC (13:06:25 Africa/Lagos)
-Revision: `main` at `5a1a0975ebcba5be65f68c916064ea00586f90e8`; Feature 04 and this handoff are uncommitted
+Updated: 2026-09-21 19:45:34 UTC
+Revision: main at 9a86f0ba1390992626a7bf6e5147a7e87d0bde48 (feat: add domain contracts and constants)
 Remote: https://github.com/Cyrus-11/ship-check.git
+Working tree: Feature 05 source/tests/context changes and this handoff are uncommitted. Local origin/main matches HEAD; no fetch was performed for this save.
 
-## Objective and scope
+## Objective and current state
 
-Build Shipcheck v0.1, a NestJS standalone release-readiness CLI for Node.js/TypeScript projects using npm. Follow [AGENTS.md](AGENTS.md), including its ordered context reading on a new session. **01–03 are complete and pushed. 04 Domain Contracts and Constants is implemented, tested, and reviewed but not committed or pushed. 05 Infrastructure Adapters is next and has not started.**
+Build Shipcheck v0.1, a NestJS standalone release-readiness CLI for Node.js/TypeScript repositories using npm. Follow [AGENTS.md](AGENTS.md), including ordered context reading on a new session. **Features 01–04 are complete and pushed. Feature 05 Infrastructure Adapters is implemented, verified, and reviewed but not committed or pushed. Feature 06 Project Discovery and Scan Context is next.** No unresolved decision or blocker remains.
 
-Public v0.1 scope is help, version, `scan`, and `scan --ci`. Exactly four sequential scanners are planned: Git, Build, Tests, Environment. No HTTP server, database, frontend, configuration system, extra scanners, or public npm publication. Shipcheck-owned operations are read-only; repository-owned build/test scripts can have side effects. Never expose environment values, subprocess output, or error stacks in reports.
+Scope stays help, version, scan, and scan --ci, with four sequential scanners: Git, Build, Tests, Environment. No HTTP server, database, frontend, configuration system, extra scanners, other package managers, or public npm publication. Shipcheck-owned operations are read-only; repository-owned build/test scripts can have side effects. Never expose environment values, raw subprocess output, or error stacks in reports.
 
-## Current state
+Detailed evidence lives in [progress-tracker.md](context/progress-tracker.md), plans in [build-plan.md](context/build-plan.md), and library decisions in [library-docs.md](context/library-docs.md). The previous memory's claim that Feature 04 was uncommitted is superseded.
 
-- Context filenames and scan side-effect/mutation rules were corrected in the scaffold session. Documentation was pushed as `db3fd60`; scaffold as `acb197b`.
-- Feature 03 was committed and pushed to `origin/main` as `5a1a097` (`feat: implement scan command shell`). HEAD and origin/main matched afterward and again before this save. Feature 02's older handoff was committed as `b1929e0`; the previous memory's claim that it was uncommitted is superseded.
-- The working tree contains Feature 04's source/test/documentation edits and this consolidated `memory.md`. HEAD and the local origin/main ref still match at the Feature 03 commit; no new fetch, commit, or push was performed for this review/save.
-- `src/main.ts` preserves the shebang and reflect-metadata import and invokes `src/bootstrap.ts`. `AppModule` imports `CommandsModule`, which registers root and scan providers and imports `ScanModule`, exporting `ScanService`.
-- Product help, aliases, bare invocation, and package-derived version work from any working directory. Invalid flags, unknown commands, and positional paths exit 2. Help/version exit 0 after asynchronous Nest cleanup.
-- `ScanCommand` accepts boolean `--ci` and built-in help, normalizes absent options to local mode, awaits one service call, then selects an exit through `src/commands/select-exit-code.ts`. Ambient `CI=true` does not enable the CLI mode. Value-bearing/negated CI flags and positional paths are rejected.
-- **The scan service is a development shell:** `src/scan/scan.service.ts` returns `{ gatePassed: false }`, performs no discovery/checks, and prints no report. Local execution exits 0; CI exits 1. These are placeholders, not readiness assessments. README states this explicitly.
-- `src/common/package-version.ts` loads Shipcheck's own manifest via a package-relative native JSON import. Feature 04 reuses `src/common/constants/exit-codes.ts` unchanged.
-- Feature 04 adds eight shared contracts/types: Scanner interface plus ScannerId, ScanStatus, ReadinessStatus, PackageJson, ScanContext, ScanResult, and ScanReport. Primary types live under `src/common/types/`; the scanner interface lives under `src/common/contracts/`.
-- `src/common/constants/scan-order.ts` defines frozen SCAN_ORDER; ScannerId derives from that tuple. `scoring.ts` defines frozen SCANNER_WEIGHTS (25 each, total 100) and READINESS_THRESHOLDS (READY 90, REVIEW 70). These are policy data, not the scanner injection registry or scoring implementation.
-- Deleted `src/scan/scan-shell-report.type.ts`. The service, exit selector, command unit test, and scan probe now use `Pick<ScanReport, "gatePassed">`. No fabricated full report was added. Six obsolete generated files were removed from `dist/scan/` and `.test-dist/src/scan/`; no old type references remain in source/tests/generated output.
-- Added five runtime policy tests at `test/unit/common/constants.spec.ts` and compiler-only examples at `test/typechecks/domain-contracts.ts`. The latter uses an uncalled function with explained expected errors and is included by the existing test tsconfig, not executed by Vitest.
-- [Progress tracker](context/progress-tracker.md) marks 01–04 complete. [Build plan](context/build-plan.md) records Feature 04's design and verification. README, architecture, and library docs describe the new contracts and preserved shell behavior.
-- Infrastructure adapters, project discovery, scanners, scoring, reporting, real scan integration fixtures, and installed-package smoke tests remain unfinished. [Scanner registry](context/scanner-registry.md) accurately marks all four scanners and the registry provider as not started.
+## Implemented behavior and boundaries
 
-## Decisions and lessons
+- Bootstrap runs once through CommandFactory; main preserves the shebang and reflect-metadata import. CommandsModule registers root/scan commands and imports ScanModule. Help/version work independently of target cwd; version comes from Shipcheck's own manifest.
+- **ScanService remains a development shell:** it returns a failed gate as Pick<ScanReport, "gatePassed">, performs no discovery/checks, and prints no report. Local/CI shell exits are 0/1; usage/unexpected failures exit 2. Ambient CI does not select CLI mode.
+- Feature 04 added domain types and Scanner under src/common/, frozen SCAN_ORDER (git, build, test, env), weights of 25 each, and READY/REVIEW thresholds of 90/70. It reused exit constants and removed ScanShellReport plus obsolete generated artifacts.
+- Feature 05 adds process-request.type.ts and process-result.type.ts under src/common/types/, and src/infrastructure/: ProcessRunner, FileSystem, Clock, InfrastructureModule, operational errors, and execution limits. The module exports its providers but is not connected to the scan shell. No dependency changed.
+- ProcessRunner uses separate executable/arguments, shell:false, closed stdin, captured output, explicit absolute cwd/timeouts, and an inherited environment snapshot plus overrides. It never mutates request or parent environment. Windows keys are normalized; undefined removes a key. Future TestScanner supplies CI: "true".
+- Ordinary numeric exits are unchanged. Timeout returns timedOut:true with synthetic exitCode 1. Missing executable/cwd and start failures throw ProcessStartError; invalid requests, output limits, signals/cancellation, and other operational failures throw ProcessExecutionError. Public messages are fixed; causes/output stay internal.
+- Execa text buffers count characters: capture uses encoding:buffer with 1,000,000 bytes per stream, then UTF-8 decoding. Check failure flags before numeric exits: buffer failure can have exitCode 0. Timeout inputs are integers from 1 through 2,147,483,647 ms. Central limits provide Git 10 seconds, build/test 120 seconds, and termination grace 5 seconds.
+- The user approved Execa's internal cmd.exe launcher for resolved npm.cmd while retaining shell:false and prohibiting Shipcheck-built shell strings. Architecture/standards record this exception. Windows supports native .exe/.com and npm.cmd; arbitrary shebang/batch launchers and metadata-denied App Execution Aliases fail safely.
+- FileSystem owns runtime node:fs/promises reads: UTF-8 readText, exists (false only for ENOENT), and Windows executable lookup. Lookup checks PATH/PATHEXT, quoted directories, extension/case rules, and current-directory control before Execa so missing commands cannot appear as ordinary exit 1. Clock uses monotonic performance.now().
+- Discovery, actual scanners/registry, scoring, reporting, real scan fixtures, and installed-package smoke tests remain unfinished. [Scanner registry](context/scanner-registry.md) accurately marks all four scanners and their registry provider as not started.
 
-- User explicitly selected **MIT** licensing. Package remains `private: true` because publication is outside implementation scope.
-- Runtime baseline: Node 22.12+, native ESM, strict TypeScript, `.js` relative imports. Verified development environment: Windows, Node 24.16.0, npm 11.13.0.
-- Pinned Nest common/core/testing **11.2.5**, nest-commander **3.21.0**, TypeScript **5.9.3**, Vitest **5.0.1**, Execa **10.0.1**, reflect-metadata **0.2.2**, RxJS **7.8.2**, and @types/node **22.20.4**.
-- Do not blindly upgrade to Nest 12: nest-commander's advertised peers accept it, but its discovery dependency 7.0.3 requires Nest `^11.1.21`. The initial Nest 12 install warned; the corrected Nest 11 tree passed strict peer validation. See [library decisions](context/library-docs.md).
-- `npm test` builds production code and compiles tests with `tsc` before running Vitest on `.test-dist/test/**/*.spec.js`. This preserves constructor metadata and proves dependency injection using the same compiler options as production. Test sources stay in `test/`; production output contains no tests.
-- Vitest 5's Node range is narrower than the runtime baseline: use Node 22.12+ on 22.x or Node 24.x for development. Node 24.16.0 was tested.
-- Execa is currently used by the test harness; future runtime subprocesses belong behind ProcessRunner. Test harnesses may read artifacts directly; runtime project reads belong behind FileSystem.
-- Feature 03 completed the previously approved deferred root-help scan listing. Help now follows the framework's observed Options-before-Commands order; no custom renderer was added.
-- nest-commander 3.21.0 wraps Commander 11.1.0. `cliName` alone does not set displayed usage; `@RootCommand()` supplies product metadata. The root provider disables excess arguments and the implicit `help` subcommand; bare invocation prints help.
-- Child commands are constructed independently and attached with `addCommand()`, so root strictness and exit overrides do not propagate. In installed nest-commander, `allowExcessArgs: false` metadata does not disable Commander's permissive default. `ScanCommand.setCommand()` explicitly calls `allowExcessArguments(false)` and `exitOverride(throwParserExit)`.
-- Parser exit overrides must throw: returning allows Commander to call `process.exit()` before cleanup. Feature 03 replaced root-only captured-object identity with a shared `ParserExitSignal` wrapper in `src/commands/parser-exit.ts`, used by root and scan overrides. Bootstrap recognizes only this wrapper, applies parser exits after factory close, and preserves command-selected exits. Cleanup failure overrides success. Do not replace this with an error handler that merely sets exitCode.
-- The shell's gate-only return is now a projection of the full ScanReport. The selector permanently needs only the gate field; real orchestration can later return a complete report without changing that dependency. Do not weaken full-report fields or invent metadata/results to satisfy the shell.
-- PackageJson is a validated readonly subset with optional string name and build/test scripts, not untrusted JSON. Feature 06 must narrow unknown input and select string fields, omitting non-string/unsupported fields. Missing/blank name fallback and missing/blank script behavior remain as documented; no new fatal metadata rules were added.
-- ScanContext and nested package metadata are readonly at the TypeScript boundary, not runtime deep-frozen. ScanResult/ScanReport fields are required; their arrays remain mutable as specified. Number types do not enforce ranges or score/status/gate consistency; future providers own those runtime invariants.
-- Type-only imports keep domain contracts independent of Nest, Commander, and terminal libraries. The weight map uses `as const satisfies Record<ScannerId, number>` to reject missing/extra keys. No dependency, engine, compiler setting, scanner registration, or CLI behavior changed in Feature 04.
-- Unexpected errors, including errors that resemble successful help signals, produce fixed safe stderr and exit 2. Usage diagnostics contain a stable help hint, not raw arguments. Factory cleanup applies after application creation succeeds; startup rejection does not expose a partial context to close.
-- Vitest's in-process data-URL import path dropped JSON import attributes (`ERR_IMPORT_ATTRIBUTE_MISSING`). Native subprocess tests now load the production metadata reader. Keep these tests native instead of changing the runtime loader or dropping validation cases.
-- Test helpers preload production modules to observe option forwarding and inject gate outcomes, startup/execution/cleanup failures, and asynchronous shutdown hooks. These exist only under `test/`; production has no test switches.
-- The sandbox and user have different Windows ownership. A Git `safe.directory` entry was added for this exact workspace. Git metadata writes/network operations required tool escalation; do not weaken ownership checks globally or force-push.
-- Automatic approval review initially rejected the Feature 03 push for lacking destination-specific authorization. After the user explicitly confirmed `Cyrus-11/ship-check`, branch `main`, the normal push succeeded. This is resolved and is not authorization for unrelated future pushes.
-- During final documentation edits, the patch helper briefly failed with a Windows sandbox setup access error and longer fallback shell edits stalled. Those processes were stopped; a minimal write worked and the patch helper subsequently recovered. The temporary write probe was removed. No application change was needed; evidence is in the tracker.
-- During Feature 04, a patch partially landed before failing to create `src/common/contracts`. Inspected landed files, created the directory, and applied only remaining edits successfully. A later shell check stalled; stopped it and ran the shorter check with `login: false`, which passed. Avoid blindly replaying partial patches or leaving stalled sessions running.
+## Durable decisions and lessons
 
-## Verification already performed
+- MIT license; package remains private. Baseline: Node >=22.12, native ESM, strict TypeScript NodeNext, runtime .js relative imports. Verified environment: Windows, Node 24.16.0, npm 11.13.0.
+- Pinned Nest common/core/testing 11.2.5, nest-commander 3.21.0, TypeScript 5.9.3, Vitest 5.0.1, Execa 10.0.1, reflect-metadata 0.2.2, RxJS 7.8.2, @types/node 22.20.4. Do not blindly upgrade Nest: the discovery dependency required Nest 11 despite nest-commander advertising Nest 12 compatibility. The current tree passed strict peer installation. Use a Node version supported by Vitest for development; Node 24 was verified.
+- npm test builds production and compiles tests with tsc, then Vitest runs .test-dist/test/**/*.spec.js. This preserves real Nest constructor metadata. Test helpers may access files/processes directly; runtime consumers use adapters. Production has no test switches or test files.
+- nest-commander child commands do not inherit root strictness/exit overrides. ScanCommand.setCommand explicitly disables excess arguments and uses the shared throwing parser override. Returning from an override permits Commander to exit before cleanup. Bootstrap recognizes only ParserExitSignal, applies exits after cleanup, and lets cleanup failures override success.
+- Native subprocess tests are necessary for the package-version JSON loader: Vitest's in-process data-URL imports dropped JSON attributes. Do not weaken the runtime loader to accommodate that transform.
+- PackageJson is a validated readonly subset, not arbitrary JSON. Feature 06 must narrow unknown input and select string name/build/test fields, omitting non-string/unsupported fields. Preserve documented blank-name fallback and missing-script behavior. Context/package readonly is compile-time protection, not runtime deep freezing. Report consistency belongs to later providers.
+- The exit selector permanently needs only the report gate field. Do not weaken complete ScanReport fields or invent results/metadata to satisfy the temporary shell.
+- Execa's full generic result conflicted with exactOptionalPropertyTypes. A private Pick of consumed fields resolved this without production assertions or Execa types in public contracts.
+- Windows taskkill was denied inside the tool sandbox. Execa killed only the direct process, leaving descendants/pipes alive. Confirmed permission failure, identified and terminated only fixture-owned ancestry with normal permissions, and removed the leftover fixture. Process-tree checks passed outside the sandbox. Cleanup is best-effort, not containment or a hard deadline.
+- The tree fixture records script/child PIDs and has independent emergency cleanup. Under the full parallel suite, the original two-second npm timeout expired before script startup. Recovery traced the missing PID marker; matching the ten-second npm smoke allowance fixed the test timing issue.
+- Patch/shell helpers sometimes stall or fail Windows sandbox setup. Inspect partial edits before retrying, stop stalled sessions, and prefer short commands with login:false. Long PowerShell handoff writes stalled again during this save; the session was stopped and the patch tool used instead. Do not blindly replay edits or weaken Git ownership checks; the workspace-specific safe.directory entry already exists.
+- Earlier push approvals applied to their specific destinations/payloads. This save does not authorize a new commit/push or implementation of Feature 06.
 
-- Final `npm install --no-audit --no-fund --strict-peer-deps`: passed without warnings; Nest dependencies deduplicated to 11.2.5.
-- Feature 04 `npm test` with `NO_COLOR=1`: production build, test compilation, compiler-only positive/negative contract checks, and all **75 tests across 7 files passed** (6 scaffold, 4 bootstrap-boundary, 7 command/DI, 5 domain policy, 20 bootstrap CLI, 8 native metadata, 25 scan shell cases).
-- Contract examples verify valid typed objects, closed IDs/statuses, required duration/weight/report fields, asynchronous scanner methods, readonly identity/context/package fields, string metadata, weight-key coverage, and full-report compatibility with the exit selector. Runtime policy tests verify exact order/IDs, 25-point weights totaling 100, thresholds, exits, and frozen constants.
-- Tests cover root/scan help, version/aliases, working-directory independence, strict argument/option rejection, actual option forwarding, ambient CI independence, the four-case gate/exit matrix, awaiting service completion, service rejection/lookalike errors, asynchronous child help/usage cleanup, and cleanup overrides. Plugin discovery, no target discovery/mutation by the shell, no network listener, safe errors/secret-marker checks, constructor DI, and existing packaging metadata checks remain covered.
-- Earlier Feature 03 manual compiled help/version returned 0; local shell returned 0, CI shell 1, invalid scan option 2 with safe stderr. Feature 04's compiled integration suite reverified these flows; no separate manual smoke was repeated because public behavior did not change.
-- `git diff --check` passed for Feature 04 and again during this review. The staged check passed for the earlier Feature 03 commit; Feature 04 has not been staged. Generated `node_modules/`, `dist/`, and `.test-dist/` remain ignored.
-- Feature 03 push advanced GitHub `main` from `b1929e0` to `5a1a097`. Local HEAD and origin/main still match there; Feature 04 and this handoff remain uncommitted.
-- Feature 04 implementation review and the user's subsequent review-before-save found no actionable findings. Reviewed plan alignment, all new source/test files, domain/consumer boundaries, emitted declarations, stale-artifact removal, docs, and regression coverage. The second review reused the unchanged implementation's successful test run, reran diff checks, and confirmed no obsolete type references; it did not rerun the suite or alter product code.
-- Limits: Windows / Node 24.16.0 only; Node 22.12, other OSes, installed npm launchers/packaging, and real scan/report fixtures remain unverified. No claim that v0.1 is complete or that tests prove every possible failure absent.
+## Verification
 
-## Commands available now
+- Final Feature 05 npm test with NO_COLOR=1 and normal Windows process-management permissions passed production build, test compilation, compiler-only domain checks, and **139 tests across 11 files**: 75 prior checks plus 52 infrastructure unit/DI checks and 12 native integration checks.
+- Native coverage: actual output/exits, literal arguments/stdin EOF, unavailable command/cwd, timeout, Unicode output limits on both streams, npm build/test in a directory with spaces, CI/environment preservation, npm descendant cleanup, filesystem reads, Windows case matching, and production Nest injection without listener/log noise.
+- Unit coverage: safe errors, signals/cancellation/I/O failures, malformed results, invalid requests, Windows lookup/access errors, environment casing/removal, and clock/DI. Existing help/version/usage/exit/cleanup checks remain passing.
+- Scoped review covered plan alignment, adapter boundaries, emitted declarations, output/error safety, environment immutability, and verification evidence. No actionable findings remained within the reviewed scope.
+- git diff --check passed after implementation and before this save. No application edits or suite rerun were needed for the handoff.
+- Limits: minimum Node 22.12, POSIX native signals/process groups, installed Shipcheck packaging, and real scan/report fixtures remain unverified. Windows npm adapter execution is verified; v0.1 is not complete.
 
-```powershell
-npm run build
-node dist/main.js --help
-node dist/main.js --version
-node dist/main.js scan --help
-node dist/main.js scan
-node dist/main.js scan --ci
-npm test
-npm run dev
-```
+## Next steps
 
-`dev` watches and recompiles source; run the compiled CLI separately. There is no server. Scan commands currently exercise only the development shell described above.
+1. Feature 05 is ready for a user-requested commit/push. Include currently untracked source/test files and this handoff when staging; saving alone does not authorize Git writes.
+2. When asked to continue product work, architect **06 Project Discovery and Scan Context**: resolve cwd once, read only its package.json through FileSystem, validate the root, select supported string metadata, apply directory-name fallback, and create immutable ScanContext with safe fatal discovery errors. Never search parent projects.
+3. Preserve the staged shell/pipeline boundary, reuse existing contracts/adapters, add targeted discovery checks and run affected gates, then update tracker/registry as appropriate.
 
-## Next step
-
-Feature 04 is ready for a requested commit/push; do not assume this review/save authorized publishing it. Its new source and test files are still untracked and must be included when staging the feature.
-
-Plan **05 Infrastructure Adapters** when requested, following [the build plan](context/build-plan.md): ProcessRunner, FileSystem, Clock, InfrastructureModule, and process-start error contract. Re-read installed Execa 10.0.1 docs/types before integrating. Resolve exit, timeout, spawn failure, bounded captured output, environment preservation, and Windows npm executable behavior without shell command strings. FileSystem must expose read-only project operations, with exists returning false only for expected ENOENT. Clock supplies a monotonic timing seam. Keep discovery and actual scanners in later features.
-
-Retain the tsc/native-subprocess test patterns, reuse the completed domain contracts/constants, run relevant checks, and update tracker/registry as appropriate. No unresolved user decision or known blocker remains. This save does not start Feature 05 or request a commit/push.
+Available commands: npm run build, npm test, npm run dev, and node dist/main.js with --help, --version, scan --help, scan, or scan --ci. Dev watches/recompiles only; there is no server.

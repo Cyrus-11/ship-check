@@ -369,14 +369,18 @@ export type ProcessResult = {
 
 Rules:
 
-- Never execute through a shell
+- Always pass `shell: false` and separate executable/arguments; never construct a shell command. User-approved Feature 05 exception: Execa may internally use cmd.exe for the resolved Windows npm.cmd launcher. Other Windows launcher formats are unsupported; native .exe/.com commands run directly.
 - Command and arguments are separate values
 - Capture output instead of inheriting the terminal
 - Use `reject: false` so non-zero exits become scanner results
 - Enforce a 120-second timeout for build and test commands
-- Limit retained stdout/stderr to a safe maximum before placing excerpts in details
-- Redact no secrets after the fact; avoid printing captured output by default
+- Limit captured stdout/stderr to 1,000,000 bytes per stream; never put raw output or excerpts in reports
+- Keep captured output and internal error causes private; public operational errors have fixed safe messages
 - Preserve the parent environment and add `CI=true` only for the test command
+
+Feature 05 distinguishes ordinary numeric exits from operational failures. Timeouts return `timedOut: true` with synthetic exit code 1; missing executables/cwd and start failures throw ProcessStartError. Output limits, invalid requests, signals, and unexpected adapter failures throw ProcessExecutionError. Inspect failure flags before numeric exits, since a buffer-limit failure may have exit code 0. Windows executable lookup happens through FileSystem before Execa to prevent its missing-command shell fallback from masquerading as exit 1. App Execution Aliases that deny metadata access and arbitrary shebang/batch launchers are unsupported and fail safely.
+
+InfrastructureModule exports ProcessRunner, FileSystem, and Clock without starting another context or connecting them to the temporary scan shell. FileSystem reads UTF-8 text, checks existence (only ENOENT means false), and resolves Windows executable files; Clock uses monotonic performance.now(). Descendant termination is best-effort through Execa and is not a sandbox guarantee.
 
 ---
 
@@ -499,7 +503,7 @@ Use `process.exitCode`; do not call `process.exit()` inside services. This allow
 ## Security and Privacy Boundaries
 
 - Shipcheck does not make network requests
-- Scanned-project file access stays within the current project; Shipcheck also loads its own installed runtime and package metadata, and the operating system resolves executables
+- Scanned-project file access stays within the current project; Shipcheck also loads its own installed runtime and package metadata, and FileSystem reads executable metadata on Windows before the operating system/Execa launches the resolved command
 - Shipcheck-owned operations never write to the scanned repository
 - Environment values are never placed in result objects
 - Subprocesses run without `shell: true`

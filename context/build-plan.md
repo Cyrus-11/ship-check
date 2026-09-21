@@ -316,30 +316,109 @@ Run `npm test` with `NO_COLOR=1`; pretest covers production build and test compi
 
 Create process, read-only filesystem, and timing adapters used by scanners. The process adapter executes repository-owned build/test scripts, which may have side effects.
 
-**Implementation:**
+**Status:** Implemented and verified on 2026-09-21 following the approved plan. Production/test compilation and all 139 tests across 11 files passed on Windows / Node 24.16.0. Feature 06 is next. Features 01–04 are committed and pushed at `9a86f0b`; Feature 05 is not committed or pushed. Memory's uncommitted Feature 04 snapshot is historical.
 
-- `ProcessRunner` wrapping Execa
-- `FileSystem` wrapping `node:fs/promises`
-- `Clock` wrapping monotonic time
-- `InfrastructureModule` exporting all three
-- Project error type for process-start failures
+**Outcome and scope:**
 
-**Acceptance:**
+Provide injectable ProcessRunner, FileSystem, and Clock providers through InfrastructureModule. Preserve the existing shell and public command surface. No discovery, real scanners, registry, scoring, reporting, configuration, CLI options, or new dependencies are included. Do not connect the adapters to ScanService until a later feature actually uses them. Repository scripts may have side effects; these adapters are not a sandbox.
 
-- Non-zero command exit returns a result rather than throwing
-- Spawn failure is distinguishable
-- Timeout is distinguishable
-- Filesystem `exists()` returns false only for missing paths
-- No write method exists on `FileSystem`
+**Installed API findings:**
 
-**Tests:**
+- Manifest, lockfile, and installed package agree on Execa 10.0.1 (Node >=22); the project remains Node >=22.12, Nest 11.2.5, TypeScript 5.9.3. No relevant Execa-specific installed skill or documentation MCP is available. Inspected installed exported options/results and implementation alongside versioned official documentation.
+- `reject: false` returns Execa error-shaped results for spawn failures, timeouts, signals, and output limits as well as ordinary non-zero exits. Some invalid options throw before a subprocess exists. A catch-only spawn-error mapping and unconditional `exitCode ?? 1` are insufficient; replace the illustrative mapping in library docs during implementation.
+- `exitCode` can be absent on timeout/spawn/signal termination. `isMaxBuffer` can be true even when exitCode is 0. A native probe observed normal non-zero exit 7, timeout with no exitCode, and a 20-byte capped Unicode result with exitCode 0 and isMaxBuffer true. Inspect failure flags before treating exitCode 0 as success.
+- Execa's text-mode maxBuffer counts characters; `encoding: "buffer"` counts bytes. Capture binary output with a 1,000,000-byte cap per stream, then decode UTF-8 inside the adapter to honor the project's actual 1 MB limit. Do not retain both result and raw Execa object on successful return.
+- On Windows Execa resolves npm to npm.cmd and internally constructs a cmd.exe invocation even with shell:false. A read-only `npm --version` probe succeeded. A missing executable probe instead resolved to a failed cmd.exe invocation with exitCode 1 and no ENOENT code; blindly returning it would misclassify unavailable Git/npm as a repository failure.
+- Execa 10 provides `killDescendants: true`; it targets a process group on POSIX and uses taskkill on Windows. Cleanup is best-effort and cannot guarantee termination of escaped/detached descendants. `windowsHide: true` avoids new console windows; no custom visible helper process is needed.
 
-- Process success
-- Process non-zero
-- Process timeout
-- Executable missing
-- File exists/missing/read behavior
-- Clock duration behavior
+Sources: official [Windows behavior](https://github.com/sindresorhus/execa/blob/v10.0.1/docs/windows.md), [errors](https://github.com/sindresorhus/execa/blob/v10.0.1/docs/errors.md), [termination](https://github.com/sindresorhus/execa/blob/v10.0.1/docs/termination.md), and Node 22.12 [filesystem](https://nodejs.org/download/release/v22.12.0/docs/api/fs.html) / [performance](https://nodejs.org/download/release/v22.12.0/docs/api/perf_hooks.html) documentation. Installed source governs version-specific details.
+
+**Approved Windows decision:**
+
+The original architecture said “Never execute through a shell.” The user authorized this clarification: Shipcheck always uses `execa(file, args, { shell: false, ... })`, never composes a shell command string, and never explicitly launches a shell; Execa's internal Windows launcher for a resolved npm.cmd is permitted. This retains npm's installed launcher behavior and avoids a custom version-manager/npm bootstrap implementation. It does not permit generic shell commands, project-script interpolation, or shell:true.
+
+Architecture and code standards now record the approved exception. Windows supports native .exe/.com and resolved npm.cmd; arbitrary shebang/batch launchers and App Execution Aliases that deny metadata access fail safely. No custom npm installation/version-manager resolution is introduced.
+
+**Project-owned contracts:**
+
+- `ProcessRequest`: keep the documented fields `file: string`, `args: string[]`, `cwd: string`, `env?: NodeJS.ProcessEnv`, `timeoutMs: number`. Executable and arguments stay separate; env contains overrides, not a replacement environment. The adapter must not mutate the request, its args/env, or process.env.
+- `ProcessResult`: keep `exitCode: number`, `stdout: string`, `stderr: string`, `timedOut: boolean`. For a timeout return `exitCode: 1` and timedOut:true; that 1 is an adapter sentinel, not a claim about an actual child exit. Other returned exit codes are actual numeric process exits. Operational failures throw project-owned errors and never become this sentinel result.
+- `ProcessStartError`: fixed safe message, optional internal cause, no raw command/arguments/output in its public message. Represents executable lookup/start failure, including missing command, missing cwd, access denial, or a failed launcher/interpreter start.
+- `ProcessExecutionError`: fixed safe message and a readonly reason (`invalid_request`, `output_limit`, `signal`, or `adapter`) plus optional internal cause. Keeps non-start operational problems distinct from a repository's normal non-zero exit. Execa-specific types remain inside ProcessRunner.
+- Raw captured output is internal adapter data only. Later scanners may inspect it for their documented checks but must never copy it into reports or diagnostics. Error causes may be retained internally and must never be serialized or logged to users.
+
+**ProcessRunner design:**
+
+1. Validate a non-empty executable, string arguments, absolute cwd, and finite positive timeout before launch. No arbitrary default cwd or disabled/infinite timeout. Reject invalid requests with a safe project error. Callers will choose 10,000 ms for Git and 120,000 ms for build/test; put those execution limits and the output cap/termination grace in one infrastructure constants file rather than duplicating scanner literals.
+2. Snapshot the inherited environment plus request overrides without mutating either. On Windows normalize equivalent environment keys case-insensitively so an override such as PATH does not coexist ambiguously with Path. Caller values win; undefined overrides remove the matching key. Pass the completed snapshot with extendEnv:false. Preserve unrelated inherited variables. ProcessRunner never adds CI itself; the future TestScanner supplies `CI: "true"`.
+3. Before Windows launch, use read-only executable lookup behind FileSystem so unavailable commands fail before Execa's cmd fallback. Resolve explicit paths from request.cwd, and bare names via the effective PATH/PATHEXT, honoring case-insensitive keys, quoted PATH entries, standard PATHEXT fallback, and NoDefaultCurrentDirectoryInExePath. Do not search parent projects or add node_modules/.bin. Return a validated absolute file; missing candidates produce ProcessStartError, and genuine access errors are not treated as absence. Do not infer missing commands by parsing localized stderr. Pass the resolved path to Execa. Resolution is not a sandbox and cannot eliminate filesystem races; do not promise that.
+4. Use shell:false, preferLocal:false, stdin:"ignore", stdout/stderr:"pipe", encoding:"buffer", buffer:true, stripFinalNewline:false, maxBuffer:1_000_000, verbose:"none", reject:false, explicit cwd/timeout, windowsHide:true, cleanup:true, killDescendants:true, and a finite forceKillAfterDelay (5,000 ms). Do not pipe output to the terminal or enable IPC. Stdin must not leave unattended scripts waiting for user input.
+5. Classify in this order: invalid request/start errors; output-limit or other identifiable I/O failure; timeout; unexpected cancellation/signal or other adapter failure; ordinary numeric exit. An output limit is an operational error even if exitCode is 0. A timeout result always has timedOut:true. Unexpected rejection becomes a safe ProcessExecutionError unless it is positively identifiable as a start failure. A failed Execa result with no numeric exit and no recognized timeout must never silently become exit 1.
+6. Decode captured bytes to UTF-8 only for normal/timeout ProcessResult returns. Await process termination/stream settlement before returning. Timeout/output-limit handling uses Execa's descendant cleanup, with a controlled tree test rather than assumptions about Windows or npm. Never add process.exit or terminal printing to these providers.
+
+The one-megabyte policy limits captured bytes, not total subprocess memory or every temporary allocation inside Execa. Cleanup can extend elapsed time beyond timeoutMs by the configured grace and OS scheduling; do not advertise a hard wall-clock deadline or comprehensive containment.
+
+**FileSystem and Clock design:**
+
+- FileSystem is the only production provider importing node:fs/promises. `readText(absolutePath): Promise<string>` uses UTF-8 and propagates read failures. It does not parse JSON/dotenv or write anything.
+- `exists(absolutePath): Promise<boolean>` uses filesystem access and returns false only for ENOENT. EACCES, EPERM, ENOTDIR, and unexpected failures propagate. Existence is not a promise of later readability, a regular file, or race-free access; consumers still handle read errors.
+- A narrowly scoped `resolveWindowsExecutable(file, cwd, env): Promise<string | undefined>` method performs the Windows lookup needed by ProcessRunner. Only the resolver reads executable metadata outside the target project, consistent with the executable-resolution exception in architecture. Keep candidate construction deterministic and filesystem checks asynchronous. Check regular files, handle Windows case/extension matching, and document unsupported launcher layouts rather than treating arbitrary filesystem errors as absence. No direct use of the unapproved transitive which-command package.
+- FileSystem takes absolute project paths; it never resolves process.cwd, searches parent package.json files, or enforces a fictitious filesystem sandbox. Symlink/permission behavior remains that of Node and is not described as containment.
+- `Clock.now(): number` delegates to node:perf_hooks performance.now for monotonic milliseconds. Future callers subtract start/end values and leave rounding to reporting. No wall-clock timestamps, timers, delays, or Date.now fallback.
+- InfrastructureModule registers and exports these three singleton providers, with ProcessRunner injecting FileSystem for Windows lookup. Keep module imports explicit; no global module, second runtime Nest context, or new command registration.
+
+**Affected areas (new paths proposed):**
+
+| Path | Responsibility |
+| --- | --- |
+| `src/common/types/process-request.type.ts`, `process-result.type.ts` | Library-independent process shapes |
+| `src/infrastructure/process-runner.service.ts` | Execa invocation, environment snapshot, result/error normalization |
+| `src/infrastructure/file-system.service.ts` | Read-only files and Windows executable lookup |
+| `src/infrastructure/clock.service.ts` | Monotonic time seam |
+| `src/infrastructure/infrastructure.module.ts` | Provider composition and exports |
+| `src/infrastructure/process-start.error.ts`, `process-execution.error.ts` | Safe operational errors |
+| `src/infrastructure/process-limits.ts` | Capture limit, termination grace, Git/build/test timeouts |
+| `test/unit/infrastructure/` | Mapping, options/environment, filesystem and clock behavior; Nest DI |
+| `test/integration/infrastructure.integration.spec.ts`, `test/helpers/` | Actual production adapter execution with temporary fixtures |
+| `context/architecture.md`, `library-docs.md`, `code-standards.md`, `build-plan.md`, `progress-tracker.md`; AGENTS.md if launcher clarification is approved | Align process mapping/launcher rules and record evidence |
+
+**Ordered implementation:**
+
+1. Resolve the Windows launcher decision and reconcile the controlling rules if approved. Existing illustrative ProcessResult mapping must be replaced with the classified behavior above. Record any change before writing the dependent integration.
+2. Add process contracts, limits, and safe errors. Implement FileSystem read/exists and Clock; cover their positive/error paths without running Git/npm. Add Windows lookup with deterministic environment/path fixtures and no production writes.
+3. Implement ProcessRunner using installed Execa types, environment snapshot, bounded byte capture, explicit non-interactive options, and ordered failure classification. Avoid broad catch-and-relabel-as-start logic.
+4. Export providers through InfrastructureModule. Verify constructor DI through tsc-compiled tests and the production build. Do not connect these providers to scan execution yet.
+5. Run mocked boundary tests and controlled native adapter tests below. Fixture scripts are static files or constant Node arguments, never shell strings assembled from project data. Temporary npm scripts use cross-platform Node commands and no dependency install/network access.
+6. Run the existing complete suite/build once the new focused tests pass; update tracker and library/architecture notes with actual evidence. Confirm all scanners and their registry remain not started. Feature 06 follows.
+
+**Acceptance and verification:**
+
+| Scenario | Expected evidence |
+| --- | --- |
+| Node child exits 0 or a chosen non-zero value | Exact exit/stdout/stderr mapping, timedOut:false; both streams captured, no parent output |
+| Shell metacharacters and spaces in individual arguments | Child receives exact strings; no interpolation or side-effect marker; stdin reaches EOF |
+| Missing executable, missing cwd, access/spawn error | ProcessStartError; never an ordinary failed result, including Windows missing-command fallback |
+| Invalid request or rejected adapter call | Safe typed operational error; no raw args, environment values, output, or stack in public message |
+| Timeout | timedOut:true and synthetic exitCode 1; no false success; controlled child/tree exits and fixture cleanup finishes |
+| Max output on either stream, including multibyte Unicode | Byte cap enforced; output-limit error even with reported exitCode 0; no accidental terminal dump |
+| Signal/cancellation or I/O failure without an ordinary exit | Operational error distinct from normal repository failure and start error |
+| Environment overrides, including Windows casing | Existing variables preserved, requested CI string forwarded, parent/request unchanged, undefined removes a key |
+| Windows lookup | PATH/PATHEXT order, explicit path, spaces, case variants, absent/quoted/empty entries, current-directory control, missing file, directory candidate, and genuine access failure |
+| npm launcher in a temporary directory containing spaces | Production ProcessRunner runs static npm build/test scripts with expected output/exit; scripts record only test-owned markers; no network/install needed |
+| File read/exists | UTF-8 content preserved, present/missing paths handled, non-ENOENT errors propagated, no write API or target mutation |
+| Clock | Controlled monotonic readings produce expected deltas; minimal real monotonic check without timing-sensitive sleeps |
+| Module boundary | Exported providers resolve through real constructor metadata; no new runtime app context, logs, listeners, or scan activity |
+| Existing public CLI | All prior 75 tests remain passing; shell still prints no report and exits locally/CI as before |
+
+Mock the library/filesystem/time boundaries for rare deterministic failures; use native Node subprocesses for real output, exits, timeout/cleanup, and argument preservation. Do not rely on user Git config, realistic secrets, global test frameworks, or real project scripts. Permission failures should be injected rather than depending on Windows ACLs or POSIX root behavior. Tree fixtures must track their own child IDs and have bounded test cleanup so a failing test does not leave processes behind; never terminate unrelated processes.
+
+Run `npm test` with NO_COLOR=1 (pretest builds production and compiles tests), `git diff --check`, and inspect runtime imports to enforce adapter boundaries. No lint script is configured. Windows is available; POSIX signal/process-group and minimum-Node validation require those environments and must remain explicitly unverified if unavailable. Full installed Shipcheck packaging remains feature 17; native npm adapter smoke is required here.
+
+**Planning evidence:** Native probes observed npm --version success, Windows missing-command exit 1 without ENOENT, non-zero exit 7, timeout without an exit code, and byte-limit failure with exitCode 0. They printed only metadata/lengths, not captured child output. The product test suite was not rerun during planning; implementation verification is recorded separately below. No Windows launcher decision remains open.
+
+**Completion:** Implemented the three providers, explicit infrastructure module, process contracts/errors/limits, and the approved Windows npm launcher policy. Request timeouts are validated as integers in Node's supported 1–2,147,483,647 ms range. Added 52 unit/DI checks and 12 native integration checks; all 75 existing checks remain passing. Production build, test compilation, all 139 tests, and scoped review passed. Public CLI behavior, scanner status, and dependencies are unchanged; scanner registry was checked and remains accurate.
+
+Windows process-tree verification requires normal process-management permissions: the sandbox denied taskkill, which was confirmed independently before the successful unsandboxed run. Test cleanup tracks its own script/child IDs and has an independent deadline. Full-suite parallel startup also exposed a two-second npm fixture timeout before script launch; matching the ten-second npm smoke allowance resolved that test timing failure. Recovery evidence is recorded in the tracker. POSIX native signals/process groups, minimum Node, and installed Shipcheck packaging remain unverified. Execa cleanup is best-effort; denied taskkill or escaped descendants can delay stream settlement beyond the configured timeout/grace.
 
 ---
 
