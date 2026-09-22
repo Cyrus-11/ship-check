@@ -8,13 +8,13 @@ Update this file after every completed feature. Any engineer or AI agent reading
 
 **Version:** v0.1.0
 
-**Phase:** Phase 2 — Core Contracts and Infrastructure
+**Phase:** Phase 3 — Scanners
 
 **In progress:** None
 
-**Last completed:** 05 Infrastructure Adapters
+**Last completed:** 06 Project Discovery and Scan Context
 
-**Next:** 06 Project Discovery and Scan Context
+**Next:** 07 Git Scanner
 
 **Blockers:** None recorded
 
@@ -23,6 +23,8 @@ Update this file after every completed feature. Any engineer or AI agent reading
 **Feature 04:** Implemented and verified on 2026-09-21 against the plan in `build-plan.md`: complete domain contracts, canonical IDs/order/weights/thresholds, and migration from the temporary shell type to a gate projection of `ScanReport`. Real report assembly and scanner execution remain later features.
 
 **Feature 05:** Implemented and verified on 2026-09-21 against the approved plan. Production/test compilation and all 139 tests across 11 files passed on Windows / Node 24.16.0. The user approved Execa's internal Windows npm.cmd launcher while retaining shell:false and separate executable/argument values. No scanner or scan-shell integration was added.
+
+**Feature 06:** Implemented and verified on 2026-09-22 against the approved plan. `ScanService` now injects `FileSystem`, resolves `process.cwd()` once, reads and validates `<cwd>/package.json` (no parent traversal), narrows the untrusted JSON into the `PackageJson` projection, applies directory-basename fallback for a missing/blank name, and builds an immutable `ScanContext`. Fatal discovery errors (missing/invalid/unreadable `package.json`) surface a safe concise stderr message and exit `2` via `ProjectDiscoveryError` in `bootstrap`. Production build and all 158 tests across 12 files passed on Windows / Node 24.16.0. No scanners, scoring, or reporting were added; valid targets still return the temporary failed-gate shell result.
 
 ---
 
@@ -38,7 +40,7 @@ Update this file after every completed feature. Any engineer or AI agent reading
 
 - [x] 04 Domain Contracts and Constants
 - [x] 05 Infrastructure Adapters
-- [ ] 06 Project Discovery and Scan Context
+- [x] 06 Project Discovery and Scan Context
 
 ### Phase 3 — Scanners
 
@@ -78,15 +80,15 @@ Update this file after every completed feature. Any engineer or AI agent reading
 
 | Gate                       | Status      | Last verified |
 | -------------------------- | ----------- | ------------- |
-| TypeScript build           | Passed (production/test compilation and positive/negative domain contract checks) | 2026-09-21 |
-| Unit tests                 | Passed (22 prior checks plus 52 infrastructure boundary/DI checks) | 2026-09-21 |
-| Integration tests          | Passed (53 prior checks plus 12 native infrastructure checks); real scan fixtures pending | 2026-09-21 |
+| TypeScript build           | Passed (production/test compilation and positive/negative domain contract checks) | 2026-09-22 |
+| Unit tests                 | Passed (prior checks plus new ScanService discovery and bootstrap ProjectDiscoveryError checks) | 2026-09-22 |
+| Integration tests          | Passed (discovery: missing/invalid/valid package.json exit and mutation checks); real scan fixtures pending | 2026-09-22 |
 | Help/version smoke test    | Root/scan help and version passed; invalid usage returns 2 | 2026-09-21 |
-| Local scan smoke test      | Shell only passed, exit 0; real pipeline pending | 2026-09-21 |
-| CI exit-code smoke test    | Shell exit 1 passed; injected gate exit matrix passed; real report enforcement pending | 2026-09-21 |
+| Local scan smoke test      | Valid target discovered, shell exit 0; real pipeline pending | 2026-09-22 |
+| CI exit-code smoke test    | Valid target shell exit 1 passed; discovery failures exit 2; real report enforcement pending | 2026-09-22 |
 | Package dry run            | Not started | —             |
-| Secret-leak negative check | Passed for bootstrap, scan shell parser/service failures; scanner checks pending | 2026-09-21 |
-| Shipcheck-owned mutation check | Passed for help/version and scan shell; real scan checks pending | 2026-09-21 |
+| Secret-leak negative check | Passed for bootstrap, scan shell, and discovery invalid-manifest failures; scanner checks pending | 2026-09-22 |
+| Shipcheck-owned mutation check | Passed for help/version, scan shell, and discovery (missing/invalid/valid targets unchanged); real scan checks pending | 2026-09-22 |
 
 ---
 
@@ -152,6 +154,17 @@ Add implementation-time decisions below this line with date, reason, and affecte
 ---
 
 ## Deviations From Context
+
+### Feature 06 implementation and verification — 2026-09-22
+
+- Added `ProjectDiscoveryError` (safe fixed messages plus internal cause) and imported `InfrastructureModule` into `ScanModule` so `ScanService` injects `FileSystem`. `ScanService.discover()` resolves `process.cwd()` once, reads only `<cwd>/package.json`, and never walks parent directories
+- Discovery narrows untrusted JSON into the validated `PackageJson` projection (string `name`; `scripts.build`/`scripts.test` only), omitting non-string fields, and applies the directory-basename fallback when `name` is missing or blank. It builds the immutable `ScanContext`; `scan()` now awaits `discover()` before returning the temporary failed-gate shell result
+- Fatal discovery outcomes map to distinct safe stderr messages and exit `2`: missing (`package.json was not found.`), invalid (`package.json is not valid JSON.`), and unreadable, each followed by `Run the command from the root of a Node.js project.`; `bootstrap` recognizes `ProjectDiscoveryError` and a generic error still yields the generic fatal message. Both new canonical messages were documented in `cli-output-rules.md`
+- `exactOptionalPropertyTypes` rejected the initial builder type that unioned `undefined` into the optional `scripts` projection; typed the builder/`projectScripts` return without the explicit `undefined` union so it assigns to `PackageJson`. No other correction was needed
+- Added ScanService unit tests (valid package, missing file, invalid JSON, non-object root, name/basename fallbacks), a bootstrap unit test for `ProjectDiscoveryError` stderr/exit `2`, and rewrote the integration discovery cases (missing → exit 2 + not-found + directory unchanged; invalid → exit 2 + invalid-JSON + byte-identical file + no leakage; valid → shell exits 0/1 + no mutation)
+- `npm run build` and `npm test` with the standard pipeline passed production/test compilation and all 158 tests across 12 files. Manual smoke test from a temp directory confirmed exit 2 (missing), exit 2 (invalid JSON), and exit 0/1 (valid) with the expected messages
+- No new dependencies. No scanners, scoring, or reporting were added; infrastructure adapters other than `FileSystem` remain unwired. Verified on Windows / Node 24.16.0 only; Node 22.12, other OSes, installed npm launchers, and packaging remain unverified. `scanner-registry.md` verified accurate: all four scanners and the registry provider remain not started
+- Next feature: 07 Git Scanner. Feature 06 is not committed or pushed
 
 ### Feature 05 implementation and verification — 2026-09-21
 
@@ -247,13 +260,13 @@ Known blocker:
 ### Latest Handoff
 
 ```text
-Date: 2026-09-21
-Completed feature: 04 Domain Contracts and Constants
-Files changed: src/common/constants/scan-order.ts, src/common/constants/scoring.ts, src/common/contracts/scanner.contract.ts, src/common/types/*, src/scan/scan.service.ts, deleted src/scan/scan-shell-report.type.ts, src/commands/select-exit-code.ts, test/unit/common/constants.spec.ts, test/typechecks/domain-contracts.ts, test/unit/commands/scan.command.spec.ts, test/helpers/scan-probe.ts, README.md, context/architecture.md, context/library-docs.md, context/build-plan.md, context/progress-tracker.md
-Tests run and results: npm test with NO_COLOR=1 passed production/test builds, compiler-only positive/negative contract checks, and all 75 tests (7 files)
-Manual verification: emitted declarations inspected; stale deleted-type artifacts removed; no old type references in source/tests/generated output; git diff --check passed. CLI behavior covered by existing compiled suite
+Date: 2026-09-22
+Completed feature: 06 Project Discovery and Scan Context
+Files changed: src/scan/project-discovery.error.ts (new), src/scan/scan.service.ts, src/scan/scan.module.ts, src/bootstrap.ts, context/cli-output-rules.md, test/unit/scan/scan.service.spec.ts (new), test/unit/bootstrap.spec.ts, test/unit/commands/scan.command.spec.ts, test/integration/scan-command.integration.spec.ts, context/progress-tracker.md
+Tests run and results: npm run build passed; npm test passed all 158 tests across 12 files (139 prior + 19 new)
+Manual verification: CLI smoke from a temp directory returned exit 2 with not-found (missing package.json), exit 2 with invalid-JSON, and exit 0/1 for a valid target; discovery mutated nothing and did not leak manifest contents
 Verification limits: Windows / Node 24.16.0 only; Node 22.12, other OSes, installed npm launcher/packaging, and real scan fixtures remain unverified
-Decision or deviation recorded: validated readonly package subset; ID union derived from frozen order; frozen scoring constants; gate-only ScanReport projection preserves the shell without fabricating a full report
-Next feature: 05 Infrastructure Adapters; ProcessRunner, FileSystem, Clock, module, and process-start error contract
+Decision or deviation recorded: two new canonical fatal discovery messages confirmed by the user; builder scripts projection typed without the undefined union to satisfy exactOptionalPropertyTypes
+Next feature: 07 Git Scanner
 Known blocker: None
 ```

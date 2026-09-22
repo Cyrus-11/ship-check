@@ -4,6 +4,7 @@ import { CommandFactory } from "nest-commander";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { bootstrap } from "../../src/bootstrap.js";
+import { ProjectDiscoveryError } from "../../src/scan/project-discovery.error.js";
 
 describe("bootstrap failure boundary", (): void => {
   let originalExitCode: typeof process.exitCode;
@@ -42,6 +43,20 @@ describe("bootstrap failure boundary", (): void => {
       expect(process.stderr.write).toHaveBeenCalledExactlyOnceWith("Shipcheck could not complete the command.\n");
     },
   );
+
+  it("reports a project discovery failure with its specific guidance", async (): Promise<void> => {
+    vi.spyOn(CommandFactory, "run").mockRejectedValue(
+      new ProjectDiscoveryError("not_found", { cause: new Error("test-only-secret-cause") }),
+    );
+
+    await bootstrap(async (): Promise<string> => "9.8.7");
+
+    expect(process.exitCode).toBe(2);
+    expect(process.stderr.write).toHaveBeenCalledExactlyOnceWith(
+      "Shipcheck could not scan this directory: package.json was not found.\n" +
+        "Run the command from the root of a Node.js project.\n",
+    );
+  });
 
   it("preserves the exit decision of a completed command", async (): Promise<void> => {
     vi.spyOn(CommandFactory, "run").mockImplementation(async (): Promise<void> => {

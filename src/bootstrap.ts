@@ -4,6 +4,7 @@ import { AppModule } from "./app.module.js";
 import { ParserExitSignal, throwParserExit } from "./commands/parser-exit.js";
 import { EXIT_CODE } from "./common/constants/exit-codes.js";
 import { readPackageVersion } from "./common/package-version.js";
+import { ProjectDiscoveryError } from "./scan/project-discovery.error.js";
 
 export async function bootstrap(
   readVersion: () => Promise<string> = readPackageVersion,
@@ -38,8 +39,13 @@ export async function bootstrap(
     if (exitCode !== undefined) {
       process.exitCode = exitCode;
     }
-  } catch {
-    process.stderr.write("Shipcheck could not complete the command.\n");
+  } catch (error: unknown) {
+    // Project discovery gives specific guidance; every other failure stays generic.
+    process.stderr.write(
+      error instanceof ProjectDiscoveryError
+        ? error.report
+        : "Shipcheck could not complete the command.\n",
+    );
     process.exitCode = EXIT_CODE.USAGE_OR_INTERNAL;
   }
 }

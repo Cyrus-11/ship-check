@@ -146,12 +146,20 @@ Rules:
 
 Bootstrap/startup/execution/cleanup failures print `Shipcheck could not complete the command.` on stderr and select exit `2`. Invalid usage prints `Shipcheck received invalid arguments. Run shipcheck --help for usage.` on stderr and selects exit `2`. Both end with `\n`; neither includes raw arguments or internal error contents.
 
-Fatal errors use this pattern:
+Fatal project-discovery errors use this pattern:
 
 ```text
 Shipcheck could not scan this directory: package.json was not found.
 Run the command from the root of a Node.js project.
 ```
+
+The headline states the cause; the second line is always the same next action:
+
+| Discovery failure                 | Headline                                                              |
+| --------------------------------- | -------------------------------------------------------------------- |
+| Missing `package.json`            | `Shipcheck could not scan this directory: package.json was not found.` |
+| Invalid JSON or non-object root   | `Shipcheck could not scan this directory: package.json is not valid JSON.` |
+| Unreadable `package.json`         | `Shipcheck could not scan this directory: package.json could not be read.` |
 
 Rules:
 

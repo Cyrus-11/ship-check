@@ -10,6 +10,11 @@ import { ScanService } from "../../../src/scan/scan.service.js";
 
 import type { ScanReport } from "../../../src/common/types/scan-report.type.js";
 
+// The command consumes only scan(); discover() and its FileSystem port are never reached here.
+function commandWith(scan: ScanService["scan"]): ScanCommand {
+  return new ScanCommand({ scan } as unknown as ScanService);
+}
+
 describe("scan command", (): void => {
   let originalExitCode: typeof process.exitCode;
 
@@ -30,7 +35,7 @@ describe("scan command", (): void => {
     { ci: true, gatePassed: true, code: 0 },
   ])("selects exit $code for ci=$ci and gate=$gatePassed", async ({ ci, gatePassed, code }): Promise<void> => {
     const scan = vi.fn<ScanService["scan"]>().mockResolvedValue({ gatePassed });
-    const command = new ScanCommand({ scan });
+    const command = commandWith(scan);
 
     await command.run([], { ci });
 
@@ -57,7 +62,7 @@ describe("scan command", (): void => {
       throw new Error("Deferred scan has not initialized");
     };
     const report = new Promise<Pick<ScanReport, "gatePassed">>((resolve): void => { complete = resolve; });
-    const command = new ScanCommand({ scan: (): Promise<Pick<ScanReport, "gatePassed">> => report });
+    const command = commandWith((): Promise<Pick<ScanReport, "gatePassed">> => report);
 
     const execution = command.run([], { ci: true });
     expect(process.exitCode).toBeUndefined();
@@ -68,7 +73,7 @@ describe("scan command", (): void => {
 
   it("propagates a service rejection without selecting a completed-scan exit", async (): Promise<void> => {
     const failure = new Error("test-only-service-failure");
-    const command = new ScanCommand({ scan: vi.fn<ScanService["scan"]>().mockRejectedValue(failure) });
+    const command = commandWith(vi.fn<ScanService["scan"]>().mockRejectedValue(failure));
 
     await expect(command.run([], { ci: true })).rejects.toBe(failure);
     expect(process.exitCode).toBeUndefined();

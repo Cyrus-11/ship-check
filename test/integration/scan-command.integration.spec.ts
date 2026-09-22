@@ -11,6 +11,9 @@ type ProbeOptions = { scan?: string; lifecycle?: string; cwd?: string; ci?: stri
 const entry = resolve("dist/main.js");
 const usageError = "Shipcheck received invalid arguments. Run shipcheck --help for usage.\n";
 const fatalError = "Shipcheck could not complete the command.\n";
+const nextStep = "Run the command from the root of a Node.js project.\n";
+const notFound = "Shipcheck could not scan this directory: package.json was not found.\n" + nextStep;
+const invalidJson = "Shipcheck could not scan this directory: package.json is not valid JSON.\n" + nextStep;
 const cleanup = "probe:destroyed\nprobe:shutdown\n";
 const scanHelp = "Usage: shipcheck scan [options]\n\n" +
   "Run release-readiness checks\n\nOptions:\n" +
@@ -114,14 +117,35 @@ describe("compiled scan command shell", (): void => {
     });
   }, 15_000);
 
-  it("performs no discovery or target mutation in an unrelated directory", async (): Promise<void> => {
-    const directory = await mkdtemp(join(tmpdir(), "shipcheck-scan-shell-"));
+  it("reports a missing package.json as a fatal discovery error and mutates nothing", async (): Promise<void> => {
+    const directory = await mkdtemp(join(tmpdir(), "shipcheck-discovery-"));
     try {
-      expect(await runCli(["scan"], { cwd: directory })).toEqual({ stdout: "", stderr: "", exitCode: 0 });
+      expect(await runCli(["scan"], { cwd: directory })).toEqual({ stdout: "", stderr: notFound, exitCode: 2 });
       expect(await readdir(directory)).toEqual([]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  }, 30_000);
 
+  it("reports invalid package.json without leaking or changing its contents", async (): Promise<void> => {
+    const directory = await mkdtemp(join(tmpdir(), "shipcheck-discovery-"));
+    try {
       const manifest = "invalid project JSON: test-only-secret-manifest";
       await writeFile(join(directory, "package.json"), manifest, "utf8");
+      expect(await runCli(["scan", "--ci"], { cwd: directory })).toEqual({ stdout: "", stderr: invalidJson, exitCode: 2 });
+      expect(await readdir(directory)).toEqual(["package.json"]);
+      expect(await readFile(join(directory, "package.json"), "utf8")).toBe(manifest);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  it("discovers a valid project, runs the shell, and mutates nothing", async (): Promise<void> => {
+    const directory = await mkdtemp(join(tmpdir(), "shipcheck-discovery-"));
+    try {
+      const manifest = '{ "name": "test-only-project" }';
+      await writeFile(join(directory, "package.json"), manifest, "utf8");
+      expect(await runCli(["scan"], { cwd: directory })).toEqual({ stdout: "", stderr: "", exitCode: 0 });
       expect(await runCli(["scan", "--ci"], { cwd: directory })).toEqual({ stdout: "", stderr: "", exitCode: 1 });
       expect(await runCli(["scan", "--help"], { cwd: directory })).toEqual({ stdout: scanHelp, stderr: "", exitCode: 0 });
       expect(await readdir(directory)).toEqual(["package.json"]);
