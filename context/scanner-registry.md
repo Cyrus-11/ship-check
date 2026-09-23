@@ -97,7 +97,7 @@ git status --porcelain
 - Git executable unavailable
 - Duration recorded
 
-**Implementation status:** Not started
+**Implementation status:** Complete — `src/scanners/git/git.scanner.ts`, provided/exported by `src/scanners/scanners.module.ts`. Unit tests in `test/unit/scanners/git/git.scanner.spec.ts`; integration coverage in `test/integration/git-scanner.integration.spec.ts`.
 
 ---
 

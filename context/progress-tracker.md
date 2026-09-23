@@ -12,9 +12,9 @@ Update this file after every completed feature. Any engineer or AI agent reading
 
 **In progress:** None
 
-**Last completed:** 06 Project Discovery and Scan Context
+**Last completed:** 07 Git Scanner
 
-**Next:** 07 Git Scanner
+**Next:** 08 Build Scanner
 
 **Blockers:** None recorded
 
@@ -25,6 +25,8 @@ Update this file after every completed feature. Any engineer or AI agent reading
 **Feature 05:** Implemented and verified on 2026-09-21 against the approved plan. Production/test compilation and all 139 tests across 11 files passed on Windows / Node 24.16.0. The user approved Execa's internal Windows npm.cmd launcher while retaining shell:false and separate executable/argument values. No scanner or scan-shell integration was added.
 
 **Feature 06:** Implemented and verified on 2026-09-22 against the approved plan. `ScanService` now injects `FileSystem`, resolves `process.cwd()` once, reads and validates `<cwd>/package.json` (no parent traversal), narrows the untrusted JSON into the `PackageJson` projection, applies directory-basename fallback for a missing/blank name, and builds an immutable `ScanContext`. Fatal discovery errors (missing/invalid/unreadable `package.json`) surface a safe concise stderr message and exit `2` via `ProjectDiscoveryError` in `bootstrap`. Production build and all 158 tests across 12 files passed on Windows / Node 24.16.0. No scanners, scoring, or reporting were added; valid targets still return the temporary failed-gate shell result.
+
+**Feature 07:** Implemented and verified on 2026-09-23 against the approved plan. `GitScanner` (`src/scanners/git/git.scanner.ts`) implements the `Scanner` contract (`id: "git"`, `name: "Git"`, weight from `SCANNER_WEIGHTS.git`) and runs read-only `git rev-parse --is-inside-work-tree`, `git branch --show-current`, and `git status --porcelain` via `ProcessRunner` under the 10s git timeout. Work-tree check failure maps to `failed` ("Not a Git repository"); post-work-tree execution failures and timeouts map to `error`; canonical clean/dirty summaries report the branch name (or `detached HEAD`) and dirty-file count only, with `details: []` (no changed paths leaked). New `ScannersModule` provides/exports `GitScanner`. Production build and all 175 tests across 14 files passed on Windows / Node 24.16.0 (17 new Git cases). The `SCANNERS` registry token is deferred to Feature 11; no scoring or reporting was added.
 
 ---
 
@@ -44,7 +46,7 @@ Update this file after every completed feature. Any engineer or AI agent reading
 
 ### Phase 3 — Scanners
 
-- [ ] 07 Git Scanner
+- [x] 07 Git Scanner
 - [ ] 08 Build Scanner
 - [ ] 09 Test Scanner
 - [ ] 10 Environment Scanner
@@ -69,7 +71,7 @@ Update this file after every completed feature. Any engineer or AI agent reading
 
 | Scanner     | Implementation | Unit tests | Integration coverage | Registry updated |
 | ----------- | -------------- | ---------- | -------------------- | ---------------- |
-| Git         | Not started    | Not started| Not started          | Not started      |
+| Git         | Complete       | Complete   | Complete             | Complete         |
 | Build       | Not started    | Not started| Not started          | Not started      |
 | Tests       | Not started    | Not started| Not started          | Not started      |
 | Environment | Not started    | Not started| Not started          | Not started      |
@@ -80,15 +82,15 @@ Update this file after every completed feature. Any engineer or AI agent reading
 
 | Gate                       | Status      | Last verified |
 | -------------------------- | ----------- | ------------- |
-| TypeScript build           | Passed (production/test compilation and positive/negative domain contract checks) | 2026-09-22 |
-| Unit tests                 | Passed (prior checks plus new ScanService discovery and bootstrap ProjectDiscoveryError checks) | 2026-09-22 |
-| Integration tests          | Passed (discovery: missing/invalid/valid package.json exit and mutation checks); real scan fixtures pending | 2026-09-22 |
+| TypeScript build           | Passed (production/test compilation, domain contract checks, and GitScanner sources) | 2026-09-23 |
+| Unit tests                 | Passed (prior checks plus new GitScanner cases with mocked ProcessRunner/Clock) | 2026-09-23 |
+| Integration tests          | Passed (prior discovery checks plus real temp-repo GitScanner clean/dirty/non-repo cases); other real scan fixtures pending | 2026-09-23 |
 | Help/version smoke test    | Root/scan help and version passed; invalid usage returns 2 | 2026-09-21 |
 | Local scan smoke test      | Valid target discovered, shell exit 0; real pipeline pending | 2026-09-22 |
 | CI exit-code smoke test    | Valid target shell exit 1 passed; discovery failures exit 2; real report enforcement pending | 2026-09-22 |
 | Package dry run            | Not started | —             |
-| Secret-leak negative check | Passed for bootstrap, scan shell, and discovery invalid-manifest failures; scanner checks pending | 2026-09-22 |
-| Shipcheck-owned mutation check | Passed for help/version, scan shell, and discovery (missing/invalid/valid targets unchanged); real scan checks pending | 2026-09-22 |
+| Secret-leak negative check | Passed for bootstrap, scan shell, discovery, and GitScanner (dirty summary/details omit changed paths); remaining scanner checks pending | 2026-09-23 |
+| Shipcheck-owned mutation check | Passed for help/version, scan shell, discovery, and GitScanner (read-only git commands leave the repo unchanged); remaining scan checks pending | 2026-09-23 |
 
 ---
 
@@ -154,6 +156,17 @@ Add implementation-time decisions below this line with date, reason, and affecte
 ---
 
 ## Deviations From Context
+
+### Feature 07 implementation and verification — 2026-09-23
+
+- Added `GitScanner` (`src/scanners/git/git.scanner.ts`) implementing the `Scanner` contract and a new `ScannersModule` (`src/scanners/scanners.module.ts`) that imports `InfrastructureModule` and provides/exports `GitScanner`. The scanner receives `ScanContext`, never reads `process.cwd()`, and returns exactly one fully populated `ScanResult`
+- Runs read-only `git rev-parse --is-inside-work-tree`, `git branch --show-current`, and `git status --porcelain` through `ProcessRunner` with the shared 10s git timeout. Work-tree check non-zero maps to `failed` ("Not a Git repository"); post-work-tree non-zero exits, spawn failures, and timeouts map to `error`; a clean tree is `passed`, a dirty tree is `failed`
+- Summaries are plain text: passing reports the branch name (or `detached HEAD` when `git branch --show-current` is empty); dirty reports the changed-file count only. `details` is always `[]` — no changed file paths are returned in summaries or details
+- Deferred the `SCANNERS` injection token and registry wiring to Feature 11 (Scanner Registry), per the build plan; `GitScanner` is exported for later composition. No scoring or reporting was added
+- Added unit tests (`test/unit/scanners/git/git.scanner.spec.ts`) covering all registry-required cases plus `ProcessExecutionError`→`error` and timeout→`error`, with mocked `ProcessRunner`/`Clock`; and integration tests (`test/integration/git-scanner.integration.spec.ts`) exercising real temporary Git repositories for clean, dirty, and non-repo cases with isolated git config
+- Fixed a strict index-access test compile error (`TS2532`) by using optional chaining on the mock call tuple. `npm run build` and `npm test` passed all 175 tests across 14 files (17 new). One pre-existing npm-subprocess infrastructure integration test timed out under 14-worker concurrency and passed in isolation (29/29 with the two new Git files) — unrelated to the Git scanner
+- No new dependencies. Verified on Windows / Node 24.16.0 only; Node 22.12, other OSes, installed npm launchers, and packaging remain unverified. `scanner-registry.md` updated: Git scanner marked complete
+- Next feature: 08 Build Scanner. Feature 07 is not committed or pushed
 
 ### Feature 06 implementation and verification — 2026-09-22
 
@@ -260,13 +273,13 @@ Known blocker:
 ### Latest Handoff
 
 ```text
-Date: 2026-09-22
-Completed feature: 06 Project Discovery and Scan Context
-Files changed: src/scan/project-discovery.error.ts (new), src/scan/scan.service.ts, src/scan/scan.module.ts, src/bootstrap.ts, context/cli-output-rules.md, test/unit/scan/scan.service.spec.ts (new), test/unit/bootstrap.spec.ts, test/unit/commands/scan.command.spec.ts, test/integration/scan-command.integration.spec.ts, context/progress-tracker.md
-Tests run and results: npm run build passed; npm test passed all 158 tests across 12 files (139 prior + 19 new)
-Manual verification: CLI smoke from a temp directory returned exit 2 with not-found (missing package.json), exit 2 with invalid-JSON, and exit 0/1 for a valid target; discovery mutated nothing and did not leak manifest contents
-Verification limits: Windows / Node 24.16.0 only; Node 22.12, other OSes, installed npm launcher/packaging, and real scan fixtures remain unverified
-Decision or deviation recorded: two new canonical fatal discovery messages confirmed by the user; builder scripts projection typed without the undefined union to satisfy exactOptionalPropertyTypes
-Next feature: 07 Git Scanner
+Date: 2026-09-23
+Completed feature: 07 Git Scanner
+Files changed: src/scanners/git/git.scanner.ts (new), src/scanners/scanners.module.ts (new), test/unit/scanners/git/git.scanner.spec.ts (new), test/integration/git-scanner.integration.spec.ts (new), context/scanner-registry.md, context/progress-tracker.md
+Tests run and results: npm run build passed; npm test passed all 175 tests across 14 files (158 prior + 17 new). One pre-existing npm-subprocess infrastructure integration test timed out under full-suite concurrency and passed in isolation (29/29) — unrelated to the Git scanner
+Manual verification: integration tests run real temporary Git repositories for clean (passed), dirty (failed, count only), and non-repo (failed, "Not a Git repository") cases; dirty summary/details omit the changed filename and the read-only git commands leave the repo unchanged
+Verification limits: Windows / Node 24.16.0 only; Node 22.12, other OSes, installed npm launcher/packaging remain unverified
+Decision or deviation recorded: SCANNERS registry token and wiring deferred to Feature 11; strict index-access test compile error fixed with optional chaining
+Next feature: 08 Build Scanner
 Known blocker: None
 ```
