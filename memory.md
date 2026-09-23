@@ -1,13 +1,13 @@
 # Shipcheck project memory
 
-Updated: 2026-09-23 11:41:35 UTC
-Revision: main at 54b9dd0 (feat: add project discovery and scan context)
+Updated: 2026-09-23 11:51:40 UTC
+Revision: main at f3d9691 (feat: add Git scanner)
 Remote: https://github.com/Cyrus-11/ship-check.git
-Working tree: origin/main is at 54b9dd0 (Features 01–06). **Feature 07 Git Scanner is implemented, tested, and documented but uncommitted.** Uncommitted: new src/scanners/ (git.scanner.ts, scanners.module.ts), new test/unit/scanners/git/git.scanner.spec.ts, new test/integration/git-scanner.integration.spec.ts, modified context/scanner-registry.md, context/progress-tracker.md, and this memory.md. No fetch was performed for this save.
+Working tree: clean; origin/main is at f3d9691. Feature 07 Git Scanner was committed as f3d9691 (7 files changed, +347/-32) and pushed. This memory.md refresh (recording the pushed HEAD) is the only pending edit. No fetch was performed for this save.
 
 ## Objective and current state
 
-Build Shipcheck v0.1, a NestJS standalone release-readiness CLI for Node.js/TypeScript repositories using npm. Follow [AGENTS.md](AGENTS.md), including ordered context reading on a new session. **Features 01–06 are complete and pushed (HEAD 54b9dd0); Feature 07 Git Scanner is complete and verified but not yet committed. Feature 08 Build Scanner is next.** No unresolved decision or blocker remains.
+Build Shipcheck v0.1, a NestJS standalone release-readiness CLI for Node.js/TypeScript repositories using npm. Follow [AGENTS.md](AGENTS.md), including ordered context reading on a new session. **Features 01–07 are complete and pushed (HEAD f3d9691). Feature 08 Build Scanner is next.** No unresolved decision or blocker remains.
 
 Scope stays help, version, scan, and scan --ci, with four sequential scanners: Git, Build, Tests, Environment. No HTTP server, database, frontend, configuration system, extra scanners, other package managers, or public npm publication. Shipcheck-owned operations are read-only; repository-owned build/test scripts can have side effects. Never expose environment values, raw subprocess output, or error stacks in reports.
 
@@ -46,7 +46,7 @@ Detailed evidence lives in [progress-tracker.md](context/progress-tracker.md), p
 - Feature 07 lesson: strict index access (noUncheckedIndexedAccess) flagged reading a mock call tuple in the unit spec (TS2532). Use optional chaining on the mock call array (e.g. run.mock.calls[0]?.[0]) rather than a non-null assertion.
 - Feature 07 lesson: git integration fixtures must isolate from the developer's global/system Git config, hooks, and signing. Set GIT_CONFIG_GLOBAL/GIT_CONFIG_SYSTEM to non-existent paths (plus GIT_CONFIG_NOSYSTEM and GIT_TERMINAL_PROMPT=0), pin the branch with init.defaultBranch=main, and pass commit identity and commit.gpgsign=false inline. Only the setup commands need this; the scanner's read-only commands inherit the real environment.
 - Feature 07 lesson: under the full parallel Vitest suite (14 workers), the pre-existing npm-subprocess infrastructure integration test can time out; it passes in isolation. This is a known test-infrastructure susceptibility, not a Git-scanner regression — do not "fix" it by weakening the Git scanner or its tests.
-- Earlier push approvals applied to their specific destinations/payloads. This save does not authorize a new commit/push. Feature 07 remains uncommitted pending a user-requested commit/push.
+- Earlier push approvals applied to their specific destinations/payloads. Feature 07 was committed (f3d9691) and pushed at the user's request; this save does not authorize any further commit/push.
 
 ## Verification
 
@@ -57,8 +57,7 @@ Detailed evidence lives in [progress-tracker.md](context/progress-tracker.md), p
 
 ## Next steps
 
-1. Commit and push Feature 07 when the user authorizes it (this save does not create a commit). Staging list: src/scanners/git/git.scanner.ts, src/scanners/scanners.module.ts, test/unit/scanners/git/git.scanner.spec.ts, test/integration/git-scanner.integration.spec.ts, context/scanner-registry.md, context/progress-tracker.md (and memory.md).
-2. Then architect/implement **08 Build Scanner** following the GitScanner pattern. Read [scanner-registry.md](context/scanner-registry.md) first for its identity/order/weight/commands/outcome rules; run npm run build via ProcessRunner (build/test 120s timeout), map an expected non-zero build exit to failed and spawn/unexpected failures to error, return exactly one ScanResult, never leak raw subprocess output, and update the registry implementation status.
-3. Reuse existing contracts/adapters and the immutable ScanContext, add targeted scanner unit tests plus fixture-based integration coverage, run affected gates, then update tracker/registry. The SCANNERS registry token/wiring remains deferred to Feature 11.
+1. Architect/implement **08 Build Scanner** following the GitScanner pattern. Read [scanner-registry.md](context/scanner-registry.md) first for its identity/order/weight/commands/outcome rules; run npm run build via ProcessRunner (build/test 120s timeout), map a missing build script and an expected non-zero build exit to failed/skipped per the registry, map spawn/unexpected failures and timeouts to error, return exactly one ScanResult, never leak raw subprocess output, and use the canonical build summaries from [cli-output-rules.md](context/cli-output-rules.md) (Scanner Failure Language).
+2. Reuse existing contracts/adapters and the immutable ScanContext, add targeted scanner unit tests plus fixture-based integration coverage, run affected gates, then update tracker/registry. The SCANNERS registry token/wiring remains deferred to Feature 11.
 
 Available commands: npm run build, npm test, npm run dev, and node dist/main.js with --help, --version, scan --help, scan, or scan --ci. Dev watches/recompiles only; there is no server.
