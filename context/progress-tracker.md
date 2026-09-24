@@ -12,9 +12,9 @@ Update this file after every completed feature. Any engineer or AI agent reading
 
 **In progress:** None
 
-**Last completed:** 07 Git Scanner
+**Last completed:** 08 Build Scanner
 
-**Next:** 08 Build Scanner
+**Next:** 09 Test Scanner
 
 **Blockers:** None recorded
 
@@ -27,6 +27,8 @@ Update this file after every completed feature. Any engineer or AI agent reading
 **Feature 06:** Implemented and verified on 2026-09-22 against the approved plan. `ScanService` now injects `FileSystem`, resolves `process.cwd()` once, reads and validates `<cwd>/package.json` (no parent traversal), narrows the untrusted JSON into the `PackageJson` projection, applies directory-basename fallback for a missing/blank name, and builds an immutable `ScanContext`. Fatal discovery errors (missing/invalid/unreadable `package.json`) surface a safe concise stderr message and exit `2` via `ProjectDiscoveryError` in `bootstrap`. Production build and all 158 tests across 12 files passed on Windows / Node 24.16.0. No scanners, scoring, or reporting were added; valid targets still return the temporary failed-gate shell result.
 
 **Feature 07:** Implemented and verified on 2026-09-23 against the approved plan. `GitScanner` (`src/scanners/git/git.scanner.ts`) implements the `Scanner` contract (`id: "git"`, `name: "Git"`, weight from `SCANNER_WEIGHTS.git`) and runs read-only `git rev-parse --is-inside-work-tree`, `git branch --show-current`, and `git status --porcelain` via `ProcessRunner` under the 10s git timeout. Work-tree check failure maps to `failed` ("Not a Git repository"); post-work-tree execution failures and timeouts map to `error`; canonical clean/dirty summaries report the branch name (or `detached HEAD`) and dirty-file count only, with `details: []` (no changed paths leaked). New `ScannersModule` provides/exports `GitScanner`. Production build and all 175 tests across 14 files passed on Windows / Node 24.16.0 (17 new Git cases). The `SCANNERS` registry token is deferred to Feature 11; no scoring or reporting was added.
+
+**Feature 08:** Implemented and verified on 2026-09-24 against the approved plan. `BuildScanner` (`src/scanners/build/build.scanner.ts`) implements the `Scanner` contract (`id: "build"`, `name: "Build"`, weight from `SCANNER_WEIGHTS.build`). It reads `packageJson.scripts.build`; a missing or blank script maps to `failed` ("package.json has no build script") without spawning npm. Otherwise it runs read-only `npm run build` via `ProcessRunner` under the 120s build timeout: a timeout maps to `failed` ("npm run build timed out after 120s"), a non-zero exit to `failed` ("npm run build failed"), and a zero exit to `passed` ("npm run build passed"). An output-capture overflow maps to `failed` ("npm run build failed"), while spawn and other adapter failures map to `error` ("Scanner could not complete"). `details` is always `[]` and no build output is rendered. Unlike the Git scanner, a build timeout is `failed`, not `error` (per the registry and cli-output-rules). `ScannersModule` now provides/exports `BuildScanner`. Production build and all 189 tests across 16 files passed on Windows / Node 24.16.0 (14 new Build cases). The `SCANNERS` registry token remains deferred to Feature 11; no scoring or reporting was added.
 
 ---
 
@@ -47,7 +49,7 @@ Update this file after every completed feature. Any engineer or AI agent reading
 ### Phase 3 — Scanners
 
 - [x] 07 Git Scanner
-- [ ] 08 Build Scanner
+- [x] 08 Build Scanner
 - [ ] 09 Test Scanner
 - [ ] 10 Environment Scanner
 - [ ] 11 Scanner Registry
@@ -72,7 +74,7 @@ Update this file after every completed feature. Any engineer or AI agent reading
 | Scanner     | Implementation | Unit tests | Integration coverage | Registry updated |
 | ----------- | -------------- | ---------- | -------------------- | ---------------- |
 | Git         | Complete       | Complete   | Complete             | Complete         |
-| Build       | Not started    | Not started| Not started          | Not started      |
+| Build       | Complete       | Complete   | Complete             | Complete         |
 | Tests       | Not started    | Not started| Not started          | Not started      |
 | Environment | Not started    | Not started| Not started          | Not started      |
 
@@ -82,15 +84,15 @@ Update this file after every completed feature. Any engineer or AI agent reading
 
 | Gate                       | Status      | Last verified |
 | -------------------------- | ----------- | ------------- |
-| TypeScript build           | Passed (production/test compilation, domain contract checks, and GitScanner sources) | 2026-09-23 |
-| Unit tests                 | Passed (prior checks plus new GitScanner cases with mocked ProcessRunner/Clock) | 2026-09-23 |
-| Integration tests          | Passed (prior discovery checks plus real temp-repo GitScanner clean/dirty/non-repo cases); other real scan fixtures pending | 2026-09-23 |
+| TypeScript build           | Passed (production/test compilation, domain contract checks, GitScanner and BuildScanner sources) | 2026-09-24 |
+| Unit tests                 | Passed (prior checks plus new BuildScanner cases with mocked ProcessRunner/Clock) | 2026-09-24 |
+| Integration tests          | Passed (prior checks plus real temp-project BuildScanner pass/fail/missing-script cases); other real scan fixtures pending | 2026-09-24 |
 | Help/version smoke test    | Root/scan help and version passed; invalid usage returns 2 | 2026-09-21 |
 | Local scan smoke test      | Valid target discovered, shell exit 0; real pipeline pending | 2026-09-22 |
 | CI exit-code smoke test    | Valid target shell exit 1 passed; discovery failures exit 2; real report enforcement pending | 2026-09-22 |
 | Package dry run            | Not started | —             |
-| Secret-leak negative check | Passed for bootstrap, scan shell, discovery, and GitScanner (dirty summary/details omit changed paths); remaining scanner checks pending | 2026-09-23 |
-| Shipcheck-owned mutation check | Passed for help/version, scan shell, discovery, and GitScanner (read-only git commands leave the repo unchanged); remaining scan checks pending | 2026-09-23 |
+| Secret-leak negative check | Passed for bootstrap, scan shell, discovery, GitScanner, and BuildScanner (build output never rendered in summary/details); remaining scanner checks pending | 2026-09-24 |
+| Shipcheck-owned mutation check | Passed for help/version, scan shell, discovery, and GitScanner; BuildScanner performs no Shipcheck-owned mutation (the repository-owned build script may have side effects); remaining scan checks pending | 2026-09-24 |
 
 ---
 
@@ -156,6 +158,18 @@ Add implementation-time decisions below this line with date, reason, and affecte
 ---
 
 ## Deviations From Context
+
+### Feature 08 implementation and verification — 2026-09-24
+
+- Added `BuildScanner` (`src/scanners/build/build.scanner.ts`) implementing the `Scanner` contract (`id: "build"`, `name: "Build"`, weight from `SCANNER_WEIGHTS.build`), following the `GitScanner` pattern. It receives `ScanContext`, never reads `process.cwd()`, and returns exactly one fully populated `ScanResult`
+- Reads `context.packageJson.scripts?.build`; a missing or blank (whitespace-only) script maps to `failed` ("package.json has no build script") without spawning npm (asserted by a never-called `ProcessRunner`). Otherwise runs read-only `npm run build` (file `npm`, args `["run", "build"]`, scan `cwd`) through `ProcessRunner` with the shared 120s build timeout
+- Outcome mapping: timeout → `failed` ("npm run build timed out after 120s"); non-zero exit → `failed` ("npm run build failed"); output-capture overflow (`ProcessExecutionError` reason `output_limit`) → `failed` ("npm run build failed"); zero exit → `passed` ("npm run build passed"); `ProcessStartError` and other `ProcessExecutionError` reasons → `error` ("Scanner could not complete"). `details` is always `[]` and no build stdout/stderr is rendered
+- Deliberate divergence from `GitScanner`: a build timeout is a `failed` check, not `error`, per the Build fail conditions in `scanner-registry.md` and the canonical timeout summary in `cli-output-rules.md`. An inline comment marks this branch to prevent a future "consistency" regression. The `120s` in the message is derived as `PROCESS_LIMITS.BUILD_TIMEOUT_MS / 1000` rather than hardcoded
+- `ScannersModule` now provides/exports `BuildScanner` alongside `GitScanner`; the `SCANNERS` injection token/wiring remains deferred to Feature 11. No scoring or reporting was added
+- Added unit tests (`test/unit/scanners/build/build.scanner.spec.ts`) covering all ten registry cases (pass, missing/blank script without spawn, non-zero, timeout→failed, output-limit→failed, npm-unavailable and adapter→error, cwd/command/args/timeout shape, duration) plus a wiring test asserting `design:paramtypes` `[ProcessRunner, Clock]`; and integration tests (`test/integration/build-scanner.integration.spec.ts`) exercising a real temp project for passing build, failing build, and missing-script cases with cross-platform Node commands
+- `npm run build` and `npm test` passed all 189 tests across 16 files (175 prior + 14 new). No new dependencies. Verified on Windows / Node 24.16.0 only; Node 22.12, other OSes, installed npm launchers, and packaging remain unverified. `scanner-registry.md` updated: Build scanner marked complete
+- Review dispositions (`/review` on Feature 08, 2026-09-24): (#1) output-capture overflow now maps to `failed` rather than `error` per `cli-output-rules.md` §171 (a repo-owned build failure must not be labeled an internal Shipcheck error); gate impact is unchanged since both are 0/25 applicable points. (#2) Unexpected non-process throws still propagate from `run()`, matching `GitScanner`; cross-scanner isolation is deferred to Feature 12 orchestration. (#3) No live 120s timeout integration test was added — the mapping is unit-tested and the adapter's real timeout was covered in Feature 05; a real timeout would add ~120s to the suite. (#4) The integration test intentionally omits a "repository unchanged" assertion because repo-owned build scripts may have side effects per `AGENTS.md`
+- Next feature: 09 Test Scanner. Feature 08 is not committed or pushed
 
 ### Feature 07 implementation and verification — 2026-09-23
 
@@ -273,13 +287,13 @@ Known blocker:
 ### Latest Handoff
 
 ```text
-Date: 2026-09-23
-Completed feature: 07 Git Scanner
-Files changed: src/scanners/git/git.scanner.ts (new), src/scanners/scanners.module.ts (new), test/unit/scanners/git/git.scanner.spec.ts (new), test/integration/git-scanner.integration.spec.ts (new), context/scanner-registry.md, context/progress-tracker.md
-Tests run and results: npm run build passed; npm test passed all 175 tests across 14 files (158 prior + 17 new). One pre-existing npm-subprocess infrastructure integration test timed out under full-suite concurrency and passed in isolation (29/29) — unrelated to the Git scanner
-Manual verification: integration tests run real temporary Git repositories for clean (passed), dirty (failed, count only), and non-repo (failed, "Not a Git repository") cases; dirty summary/details omit the changed filename and the read-only git commands leave the repo unchanged
+Date: 2026-09-24
+Completed feature: 08 Build Scanner
+Files changed: src/scanners/build/build.scanner.ts (new), src/scanners/scanners.module.ts, test/unit/scanners/build/build.scanner.spec.ts (new), test/integration/build-scanner.integration.spec.ts (new), context/scanner-registry.md, context/progress-tracker.md
+Tests run and results: npm run build passed; npm test passed all 189 tests across 16 files (175 prior + 14 new)
+Manual verification: integration tests run a real temporary npm project for passing build (passed), failing build (failed, "npm run build failed"), and missing-script (failed, "package.json has no build script") cases; build stdout/stderr is never rendered in summary or details
 Verification limits: Windows / Node 24.16.0 only; Node 22.12, other OSes, installed npm launcher/packaging remain unverified
-Decision or deviation recorded: SCANNERS registry token and wiring deferred to Feature 11; strict index-access test compile error fixed with optional chaining
-Next feature: 08 Build Scanner
+Decision or deviation recorded: build timeout and output-capture overflow map to failed (not error) per registry/cli-output-rules §171; SCANNERS registry token and wiring remain deferred to Feature 11
+Next feature: 09 Test Scanner
 Known blocker: None
 ```

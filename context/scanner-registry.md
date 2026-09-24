@@ -122,6 +122,7 @@ npm run build
 - Build script is missing or blank
 - Build command exits non-zero
 - Build command times out
+- Build output exceeds the capture limit (repo-owned failure, not a Shipcheck error)
 
 **Error conditions:**
 
@@ -142,12 +143,13 @@ npm run build
 - Build script blank
 - Build exits non-zero
 - Build times out
+- Build output exceeds the capture limit
 - npm executable unavailable
 - `cwd` is the scan context directory
 - Exact command and arguments passed without a shell
 - Duration recorded
 
-**Implementation status:** Not started
+**Implementation status:** Complete — `src/scanners/build/build.scanner.ts`, provided/exported by `src/scanners/scanners.module.ts`. Unit tests in `test/unit/scanners/build/build.scanner.spec.ts`; integration coverage in `test/integration/build-scanner.integration.spec.ts`.
 
 ---
 
