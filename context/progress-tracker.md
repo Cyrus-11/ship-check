@@ -12,9 +12,9 @@ Update this file after every completed feature. Any engineer or AI agent reading
 
 **In progress:** None
 
-**Last completed:** 08 Build Scanner
+**Last completed:** 09 Test Scanner
 
-**Next:** 09 Test Scanner
+**Next:** 10 Environment Scanner
 
 **Blockers:** None recorded
 
@@ -29,6 +29,8 @@ Update this file after every completed feature. Any engineer or AI agent reading
 **Feature 07:** Implemented and verified on 2026-09-23 against the approved plan. `GitScanner` (`src/scanners/git/git.scanner.ts`) implements the `Scanner` contract (`id: "git"`, `name: "Git"`, weight from `SCANNER_WEIGHTS.git`) and runs read-only `git rev-parse --is-inside-work-tree`, `git branch --show-current`, and `git status --porcelain` via `ProcessRunner` under the 10s git timeout. Work-tree check failure maps to `failed` ("Not a Git repository"); post-work-tree execution failures and timeouts map to `error`; canonical clean/dirty summaries report the branch name (or `detached HEAD`) and dirty-file count only, with `details: []` (no changed paths leaked). New `ScannersModule` provides/exports `GitScanner`. Production build and all 175 tests across 14 files passed on Windows / Node 24.16.0 (17 new Git cases). The `SCANNERS` registry token is deferred to Feature 11; no scoring or reporting was added.
 
 **Feature 08:** Implemented and verified on 2026-09-24 against the approved plan. `BuildScanner` (`src/scanners/build/build.scanner.ts`) implements the `Scanner` contract (`id: "build"`, `name: "Build"`, weight from `SCANNER_WEIGHTS.build`). It reads `packageJson.scripts.build`; a missing or blank script maps to `failed` ("package.json has no build script") without spawning npm. Otherwise it runs read-only `npm run build` via `ProcessRunner` under the 120s build timeout: a timeout maps to `failed` ("npm run build timed out after 120s"), a non-zero exit to `failed` ("npm run build failed"), and a zero exit to `passed` ("npm run build passed"). An output-capture overflow maps to `failed` ("npm run build failed"), while spawn and other adapter failures map to `error` ("Scanner could not complete"). `details` is always `[]` and no build output is rendered. Unlike the Git scanner, a build timeout is `failed`, not `error` (per the registry and cli-output-rules). `ScannersModule` now provides/exports `BuildScanner`. Production build and all 189 tests across 16 files passed on Windows / Node 24.16.0 (14 new Build cases). The `SCANNERS` registry token remains deferred to Feature 11; no scoring or reporting was added.
+
+**Feature 09:** Implemented and verified on 2026-09-25 against the approved plan. `TestScanner` (`src/scanners/test/test.scanner.ts`) implements the `Scanner` contract (`id: "test"`, `name: "Tests"`, weight from `SCANNER_WEIGHTS.test`), mirroring `BuildScanner`. It reads `packageJson.scripts.test`; a missing or blank script maps to `failed` ("package.json has no test script") without spawning npm. Otherwise it runs read-only `npm test` via `ProcessRunner` under the 120s test timeout with a `CI=true` environment override (the parent `process.env` is never mutated): a timeout maps to `failed` ("npm test timed out after 120s"), a non-zero exit to `failed` ("npm test failed"), and a zero exit to `passed` ("npm test passed"). An output-capture overflow maps to `failed` ("npm test failed"), while spawn and other adapter failures map to `error` ("Scanner could not complete"). `details` is always `[]` and no test output is rendered. `ScannersModule` now provides/exports `TestScanner`. Production build and all 204 tests across 18 files passed on Windows / Node 24.16.0 (15 new Test cases). The `SCANNERS` registry token remains deferred to Feature 11; no scoring or reporting was added.
 
 ---
 
@@ -50,7 +52,7 @@ Update this file after every completed feature. Any engineer or AI agent reading
 
 - [x] 07 Git Scanner
 - [x] 08 Build Scanner
-- [ ] 09 Test Scanner
+- [x] 09 Test Scanner
 - [ ] 10 Environment Scanner
 - [ ] 11 Scanner Registry
 
@@ -75,7 +77,7 @@ Update this file after every completed feature. Any engineer or AI agent reading
 | ----------- | -------------- | ---------- | -------------------- | ---------------- |
 | Git         | Complete       | Complete   | Complete             | Complete         |
 | Build       | Complete       | Complete   | Complete             | Complete         |
-| Tests       | Not started    | Not started| Not started          | Not started      |
+| Tests       | Complete       | Complete   | Complete             | Complete         |
 | Environment | Not started    | Not started| Not started          | Not started      |
 
 ---
@@ -84,15 +86,15 @@ Update this file after every completed feature. Any engineer or AI agent reading
 
 | Gate                       | Status      | Last verified |
 | -------------------------- | ----------- | ------------- |
-| TypeScript build           | Passed (production/test compilation, domain contract checks, GitScanner and BuildScanner sources) | 2026-09-24 |
-| Unit tests                 | Passed (prior checks plus new BuildScanner cases with mocked ProcessRunner/Clock) | 2026-09-24 |
-| Integration tests          | Passed (prior checks plus real temp-project BuildScanner pass/fail/missing-script cases); other real scan fixtures pending | 2026-09-24 |
+| TypeScript build           | Passed (production/test compilation, domain contract checks, GitScanner, BuildScanner, and TestScanner sources) | 2026-09-25 |
+| Unit tests                 | Passed (prior checks plus new TestScanner cases with mocked ProcessRunner/Clock) | 2026-09-25 |
+| Integration tests          | Passed (prior checks plus real temp-project TestScanner pass/fail/missing-script/CI=true cases); other real scan fixtures pending | 2026-09-25 |
 | Help/version smoke test    | Root/scan help and version passed; invalid usage returns 2 | 2026-09-21 |
 | Local scan smoke test      | Valid target discovered, shell exit 0; real pipeline pending | 2026-09-22 |
 | CI exit-code smoke test    | Valid target shell exit 1 passed; discovery failures exit 2; real report enforcement pending | 2026-09-22 |
 | Package dry run            | Not started | —             |
-| Secret-leak negative check | Passed for bootstrap, scan shell, discovery, GitScanner, and BuildScanner (build output never rendered in summary/details); remaining scanner checks pending | 2026-09-24 |
-| Shipcheck-owned mutation check | Passed for help/version, scan shell, discovery, and GitScanner; BuildScanner performs no Shipcheck-owned mutation (the repository-owned build script may have side effects); remaining scan checks pending | 2026-09-24 |
+| Secret-leak negative check | Passed for bootstrap, scan shell, discovery, GitScanner, BuildScanner, and TestScanner (build/test output never rendered in summary/details); remaining scanner checks pending | 2026-09-25 |
+| Shipcheck-owned mutation check | Passed for help/version, scan shell, discovery, and GitScanner; BuildScanner and TestScanner perform no Shipcheck-owned mutation (the repository-owned build/test scripts may have side effects); remaining scan checks pending | 2026-09-25 |
 
 ---
 
@@ -158,6 +160,19 @@ Add implementation-time decisions below this line with date, reason, and affecte
 ---
 
 ## Deviations From Context
+
+### Feature 09 implementation and verification — 2026-09-25
+
+- Added `TestScanner` (`src/scanners/test/test.scanner.ts`) implementing the `Scanner` contract (`id: "test"`, `name: "Tests"`, weight from `SCANNER_WEIGHTS.test`), mirroring the `BuildScanner` pattern. It receives `ScanContext`, never reads `process.cwd()`, and returns exactly one fully populated `ScanResult`
+- Reads `context.packageJson.scripts?.test`; a missing or blank (whitespace-only) script maps to `failed` ("package.json has no test script") without spawning npm (asserted by a never-called `ProcessRunner`). Otherwise runs read-only `npm test` (file `npm`, args `["test"]`, scan `cwd`, env override `{ CI: "true" }`) through `ProcessRunner` with the shared 120s test timeout
+- Outcome mapping: timeout → `failed` ("npm test timed out after 120s"); non-zero exit → `failed` ("npm test failed"); output-capture overflow (`ProcessExecutionError` reason `output_limit`) → `failed` ("npm test failed"); zero exit → `passed` ("npm test passed"); `ProcessStartError` and other `ProcessExecutionError` reasons → `error` ("Scanner could not complete"). `details` is always `[]` and no test stdout/stderr is rendered
+- Confirmed decision D5 (Build/Test symmetry): an output-capture overflow is a repo-owned `failed` check, not a Shipcheck `error`, per `cli-output-rules.md` §171; gate impact is unchanged since both are 0/25 applicable points. As with `BuildScanner`, a test timeout is a `failed` check, not `error`, and the `120s` in the message is derived as `PROCESS_LIMITS.TEST_TIMEOUT_MS / 1000` rather than hardcoded
+- `CI=true` is injected only for the test subprocess via the `ProcessRunner` env override; the parent `process.env.CI` is asserted unchanged in both unit and integration tests
+- `ScannersModule` now provides/exports `TestScanner` alongside `GitScanner` and `BuildScanner`; the `SCANNERS` injection token/wiring remains deferred to Feature 11. No scoring or reporting was added
+- Added unit tests (`test/unit/scanners/test/test.scanner.spec.ts`) covering all registry cases (pass, missing/blank script without spawn, non-zero, timeout→failed, output-limit→failed, npm-unavailable and adapter→error, cwd/command/args/timeout/`CI=true` shape with parent env preserved, duration) plus a wiring test asserting `design:paramtypes` `[ProcessRunner, Clock]`; and integration tests (`test/integration/test-scanner.integration.spec.ts`) exercising a real temp project for passing, failing, missing-script, and a `CI=true`-dependent script with the parent environment left unchanged
+- Refined the scaffold guard in `test/unit/scaffold.spec.ts`: the "keeps tests out of production output" assertion previously flagged any `test` path segment in `dist/`, which now falsely matched the legitimate production directory `dist/scanners/test/` (the Test scanner follows the mandated `scanners/<id>/<id>.scanner.ts` convention). Anchored the directory match to the dist root (`^test[\\/]`) so a leaked `test/` source tree is still caught while nested production `test` directories are not; the `.spec.` guard is unchanged
+- `npm run build` and `npm test` passed all 204 tests across 18 files (189 prior + 15 new). No new dependencies. Verified on Windows / Node 24.16.0 only; Node 22.12, other OSes, installed npm launchers, and packaging remain unverified. `scanner-registry.md` updated: Test scanner marked complete with the output-limit fail condition and unit case
+- Next feature: 10 Environment Scanner. Feature 09 is not committed or pushed
 
 ### Feature 08 implementation and verification — 2026-09-24
 
@@ -287,13 +302,13 @@ Known blocker:
 ### Latest Handoff
 
 ```text
-Date: 2026-09-24
-Completed feature: 08 Build Scanner
-Files changed: src/scanners/build/build.scanner.ts (new), src/scanners/scanners.module.ts, test/unit/scanners/build/build.scanner.spec.ts (new), test/integration/build-scanner.integration.spec.ts (new), context/scanner-registry.md, context/progress-tracker.md
-Tests run and results: npm run build passed; npm test passed all 189 tests across 16 files (175 prior + 14 new)
-Manual verification: integration tests run a real temporary npm project for passing build (passed), failing build (failed, "npm run build failed"), and missing-script (failed, "package.json has no build script") cases; build stdout/stderr is never rendered in summary or details
+Date: 2026-09-25
+Completed feature: 09 Test Scanner
+Files changed: src/scanners/test/test.scanner.ts (new), src/scanners/scanners.module.ts, test/unit/scanners/test/test.scanner.spec.ts (new), test/integration/test-scanner.integration.spec.ts (new), test/unit/scaffold.spec.ts, context/scanner-registry.md, context/progress-tracker.md
+Tests run and results: npm run build passed; npm test passed all 204 tests across 18 files (189 prior + 15 new)
+Manual verification: integration tests run a real temporary npm project for passing test (passed), failing test (failed, "npm test failed"), missing-script (failed, "package.json has no test script"), and a CI=true-dependent script (passed) with the parent process.env.CI left unchanged; test stdout/stderr is never rendered in summary or details
 Verification limits: Windows / Node 24.16.0 only; Node 22.12, other OSes, installed npm launcher/packaging remain unverified
-Decision or deviation recorded: build timeout and output-capture overflow map to failed (not error) per registry/cli-output-rules §171; SCANNERS registry token and wiring remain deferred to Feature 11
-Next feature: 09 Test Scanner
+Decision or deviation recorded: D5 confirmed — test output-capture overflow and timeout map to failed (not error) per registry/cli-output-rules §171; CI=true injected only for the test subprocess (parent env unchanged); scaffold dist-guard anchored to ^test so the production scanners/test directory is allowed; SCANNERS registry token and wiring remain deferred to Feature 11
+Next feature: 10 Environment Scanner
 Known blocker: None
 ```

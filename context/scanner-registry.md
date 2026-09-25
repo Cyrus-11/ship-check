@@ -180,6 +180,7 @@ CI=true
 - Test script is missing or blank
 - Test command exits non-zero, including a no-tests failure chosen by the project's runner
 - Test command times out
+- Test output exceeds the capture limit (repo-owned failure, not a Shipcheck error)
 
 **Error conditions:**
 
@@ -200,12 +201,13 @@ CI=true
 - Test script blank
 - Tests exit non-zero
 - Tests time out
+- Test output exceeds the capture limit
 - npm executable unavailable
 - Existing environment preserved while `CI=true` is added
 - `cwd` is the scan context directory
 - Duration recorded
 
-**Implementation status:** Not started
+**Implementation status:** Complete — `src/scanners/test/test.scanner.ts`, provided/exported by `src/scanners/scanners.module.ts`. Unit tests in `test/unit/scanners/test/test.scanner.spec.ts`; integration coverage in `test/integration/test-scanner.integration.spec.ts`.
 
 ---
 

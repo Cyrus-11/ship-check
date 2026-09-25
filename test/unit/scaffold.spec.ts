@@ -33,7 +33,7 @@ describe("project scaffold", (): void => {
 
     expect(entry.split(/\r?\n/, 1)).toEqual(["#!/usr/bin/env node"]);
     expect(files).toContain("app.module.js");
-    expect(files.some((file): boolean => /(^|[\\/])test([\\/]|$)|\.spec\./.test(file))).toBe(false);
+    expect(files.some((file): boolean => /^test[\\/]|\.spec\./.test(file))).toBe(false);
   });
 
   it("prints help and exits successfully without opening a network listener", async (): Promise<void> => {
