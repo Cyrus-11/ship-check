@@ -553,31 +553,32 @@ Implement test-script verification and execution.
 
 Implement presence-only environment contract validation.
 
-**Implementation:**
+**Architecture and decisions:**
 
-- Skip if `.env.example` is absent
-- Parse example, `.env`, and `.env.local` with `dotenv.parse`
-- Treat a required name as present when any approved source supplies a non-empty value
-- Treat empty/whitespace values as missing
-- Normalize and alphabetically sort missing names
-- Ensure values never enter result objects
+- Add `EnvScanner` as a Nest singleton implementing `Scanner`. Its identity is `env` / `Environment`, with the existing `SCANNER_WEIGHTS.env` (25). Inject `FileSystem` and `Clock`; use `ScanContext.cwd` for all paths. No command is spawned.
+- `.env.example` is the only contract. Its parsed keys define required names; example values, including placeholders, do not satisfy requirements. Duplicate declarations count once. An existing but empty/comment-only example defines zero required names and passes with `0 required variables are present` without reading optional sources.
+- A required name is present if `process.env`, `.env.local`, or `.env` has at least one value whose trimmed length is greater than zero. Evaluate each source independently so an empty value in one source cannot mask a non-empty value in another. This is a presence check, not configuration precedence or value validation. Use exact parsed key names and alphabetically sort missing names.
+- Use `FileSystem.exists()` and `readText()` on absolute paths. Missing `.env.example` skips immediately; absent optional files contribute no names. A filesystem failure other than an absent optional file returns one `error` result. If an optional file disappears between existence and read, treat `ENOENT` as absent; a vanished example is skipped. Do not include paths, error messages, or file contents in the public result.
+- Parse file content with `dotenv.parse()`, never `config()`, and do not change `process.env`. The [dotenv parse documentation](https://github.com/motdotla/dotenv/blob/v18.0.3/README.md#parse) describes a string/Buffer-to-key/value parse. Implementation selected and locked `dotenv` 18.0.4 after checking npm metadata, its installed manifest, declarations, and README. Its Node >=12 requirement fits the project baseline; installed API findings and ESM verification are recorded in `library-docs.md`.
+- Parsed values remain local to the scanner only until presence is evaluated. The result contains canonical summary text and missing names in `details`, never available names or any values. The reporter's five-name display cap remains Feature 14; do not truncate the scanner's `details` here.
+- Use `Clock.now()` before and after evaluation and return exactly one complete `ScanResult` for passed, failed, skipped, or operational error. Filesystem/parser failures become a safe error result here; the Feature 12 `ScanService` safety boundary will also protect the overall pipeline.
+- Provide/export `EnvScanner` from `ScannersModule`. Keep the ordered `SCANNERS` token/factory for Feature 11; scoring, reporting, and CLI exit behavior remain later features.
 
-**Acceptance:**
+**Affected files:** `package.json`, `package-lock.json`, `src/scanners/env/env.scanner.ts`, `src/scanners/scanners.module.ts`, `test/unit/scanners/env/env.scanner.spec.ts`, `test/integration/env-scanner.integration.spec.ts`, `test/helpers/env-scanner-probe.ts` (native production provider verification), `context/library-docs.md` (installed-version findings), `context/scanner-registry.md`, and `context/progress-tracker.md` after verification.
 
-- Missing example skips
-- Complete environment passes
-- Missing or empty variable fails
-- Results contain names only
-- Process environment is not mutated
+**Build sequence:**
 
-**Tests:**
+1. Confirm the current dependency tree and choose a compatible `dotenv` release. Add it as an exact runtime dependency, update the lockfile, inspect installed types/docs, and verify the supported import form under NodeNext.
+2. Implement the scanner with a small file-reading helper that distinguishes absent files from read failures. Parse the example for required keys, then evaluate presence against optional files and `process.env`; construct only status, canonical summary, sorted missing names, duration, and weight.
+3. Register the concrete provider in `ScannersModule` without creating `SCANNERS` yet.
+4. Add focused unit tests with mocked `FileSystem`/`Clock`, then real temporary-file integration tests. Update the registry and tracker only after the required build and tests pass.
 
-- Every Environment case listed in `scanner-registry.md`
-- Explicit negative assertion that known secret fixture values never appear
+**Acceptance and verification:**
 
-**Documentation:**
-
-- Mark Environment scanner complete in `scanner-registry.md`
+- Missing example returns `skipped` / `No .env.example found` without reading optional files. An unreadable example or optional file returns `error` / `Scanner could not complete`; an absent optional file is ignored.
+- Every required name present across any approved sources returns `passed`, using `1 required variable is present` or `{count} required variables are present`. Missing or whitespace-only names return `failed`, using `Missing 1 required variable` or `Missing {count} required variables`, with unique alphabetically sorted names in `details`.
+- Unit cases cover every Environment row in `scanner-registry.md`, including comments, quotes, duplicate names, source independence when one source is empty, duration, and Nest constructor injection. Assert that a sentinel secret value appears nowhere in the result and that `process.env` is unchanged.
+- Temporary fixture tests exercise actual `.env.example`, `.env`, and `.env.local` reads for skipped, passed, failed, and unreadable-file paths where portable. Do not write environment fixture files into the committed project. Run `npm run build`, `npm test`, and `git diff --check`; record observed outcomes and platform limits in the tracker.
 
 ---
 

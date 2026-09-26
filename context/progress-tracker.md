@@ -12,9 +12,9 @@ Update this file after every completed feature. Any engineer or AI agent reading
 
 **In progress:** None
 
-**Last completed:** 09 Test Scanner
+**Last completed:** 10 Environment Scanner
 
-**Next:** 10 Environment Scanner
+**Next:** 11 Scanner Registry
 
 **Blockers:** None recorded
 
@@ -31,6 +31,8 @@ Update this file after every completed feature. Any engineer or AI agent reading
 **Feature 08:** Implemented and verified on 2026-09-24 against the approved plan. `BuildScanner` (`src/scanners/build/build.scanner.ts`) implements the `Scanner` contract (`id: "build"`, `name: "Build"`, weight from `SCANNER_WEIGHTS.build`). It reads `packageJson.scripts.build`; a missing or blank script maps to `failed` ("package.json has no build script") without spawning npm. Otherwise it runs read-only `npm run build` via `ProcessRunner` under the 120s build timeout: a timeout maps to `failed` ("npm run build timed out after 120s"), a non-zero exit to `failed` ("npm run build failed"), and a zero exit to `passed` ("npm run build passed"). An output-capture overflow maps to `failed` ("npm run build failed"), while spawn and other adapter failures map to `error` ("Scanner could not complete"). `details` is always `[]` and no build output is rendered. Unlike the Git scanner, a build timeout is `failed`, not `error` (per the registry and cli-output-rules). `ScannersModule` now provides/exports `BuildScanner`. Production build and all 189 tests across 16 files passed on Windows / Node 24.16.0 (14 new Build cases). The `SCANNERS` registry token remains deferred to Feature 11; no scoring or reporting was added.
 
 **Feature 09:** Implemented and verified on 2026-09-25 against the approved plan. `TestScanner` (`src/scanners/test/test.scanner.ts`) implements the `Scanner` contract (`id: "test"`, `name: "Tests"`, weight from `SCANNER_WEIGHTS.test`), mirroring `BuildScanner`. It reads `packageJson.scripts.test`; a missing or blank script maps to `failed` ("package.json has no test script") without spawning npm. Otherwise it runs read-only `npm test` via `ProcessRunner` under the 120s test timeout with a `CI=true` environment override (the parent `process.env` is never mutated): a timeout maps to `failed` ("npm test timed out after 120s"), a non-zero exit to `failed` ("npm test failed"), and a zero exit to `passed` ("npm test passed"). An output-capture overflow maps to `failed` ("npm test failed"), while spawn and other adapter failures map to `error` ("Scanner could not complete"). `details` is always `[]` and no test output is rendered. `ScannersModule` now provides/exports `TestScanner`. Production build and all 204 tests across 18 files passed on Windows / Node 24.16.0 (15 new Test cases). The `SCANNERS` registry token remains deferred to Feature 11; no scoring or reporting was added.
+
+**Feature 10:** Implemented and verified on 2026-09-26 against the Feature 10 plan. `EnvScanner` uses `FileSystem`, `Clock`, and pinned `dotenv` 18.0.4 to parse required names from `.env.example` and evaluate non-whitespace presence across `.env`, `.env.local`, and `process.env`. Missing example skips; an empty contract passes; missing names fail with sorted name-only details; file/parser failures return a safe error. No environment values enter results or mutate `process.env`. `ScannersModule` provides/exports the concrete scanner; the ordered registry remains Feature 11. Production/test compilation and all 245 tests across 20 files passed on Windows / Node 24.16.0 (41 new Environment cases).
 
 ---
 
@@ -53,7 +55,7 @@ Update this file after every completed feature. Any engineer or AI agent reading
 - [x] 07 Git Scanner
 - [x] 08 Build Scanner
 - [x] 09 Test Scanner
-- [ ] 10 Environment Scanner
+- [x] 10 Environment Scanner
 - [ ] 11 Scanner Registry
 
 ### Phase 4 — Orchestration and Reporting
@@ -78,7 +80,7 @@ Update this file after every completed feature. Any engineer or AI agent reading
 | Git         | Complete       | Complete   | Complete             | Complete         |
 | Build       | Complete       | Complete   | Complete             | Complete         |
 | Tests       | Complete       | Complete   | Complete             | Complete         |
-| Environment | Not started    | Not started| Not started          | Not started      |
+| Environment | Complete       | Complete   | Complete             | Complete         |
 
 ---
 
@@ -86,15 +88,15 @@ Update this file after every completed feature. Any engineer or AI agent reading
 
 | Gate                       | Status      | Last verified |
 | -------------------------- | ----------- | ------------- |
-| TypeScript build           | Passed (production/test compilation, domain contract checks, GitScanner, BuildScanner, and TestScanner sources) | 2026-09-25 |
-| Unit tests                 | Passed (prior checks plus new TestScanner cases with mocked ProcessRunner/Clock) | 2026-09-25 |
-| Integration tests          | Passed (prior checks plus real temp-project TestScanner pass/fail/missing-script/CI=true cases); other real scan fixtures pending | 2026-09-25 |
+| TypeScript build           | Passed (production/test compilation, domain contract checks, all four scanner sources) | 2026-09-26 |
+| Unit tests                 | Passed (prior checks plus 33 EnvScanner cases with mocked FileSystem/Clock and provider injection) | 2026-09-26 |
+| Integration tests          | Passed (prior checks plus 8 Environment real-file/native provider cases); full scan fixtures pending | 2026-09-26 |
 | Help/version smoke test    | Root/scan help and version passed; invalid usage returns 2 | 2026-09-21 |
 | Local scan smoke test      | Valid target discovered, shell exit 0; real pipeline pending | 2026-09-22 |
 | CI exit-code smoke test    | Valid target shell exit 1 passed; discovery failures exit 2; real report enforcement pending | 2026-09-22 |
 | Package dry run            | Not started | —             |
-| Secret-leak negative check | Passed for bootstrap, scan shell, discovery, GitScanner, BuildScanner, and TestScanner (build/test output never rendered in summary/details); remaining scanner checks pending | 2026-09-25 |
-| Shipcheck-owned mutation check | Passed for help/version, scan shell, discovery, and GitScanner; BuildScanner and TestScanner perform no Shipcheck-owned mutation (the repository-owned build/test scripts may have side effects); remaining scan checks pending | 2026-09-25 |
+| Secret-leak negative check | Passed for bootstrap, scan shell, discovery, and all four scanners; Environment sentinel values absent from results/native probe output; full report checks pending | 2026-09-26 |
+| Shipcheck-owned mutation check | Passed for help/version, scan shell, discovery, GitScanner, and EnvScanner (fixture files and environment unchanged); Build/Test execute repository-owned scripts that may have side effects; full scan checks pending | 2026-09-26 |
 
 ---
 
@@ -160,6 +162,19 @@ Add implementation-time decisions below this line with date, reason, and affecte
 ---
 
 ## Deviations From Context
+
+### Feature 10 implementation and verification — 2026-09-26
+
+- Added `src/scanners/env/env.scanner.ts` and provided/exported `EnvScanner` from `ScannersModule`. The scanner uses the existing identity, weight, result contract, clock, and filesystem adapter; no process runner or command-layer change is needed. The ordered `SCANNERS` token remains Feature 11.
+- Required keys come only from `dotenv.parse(.env.example)`. Example values do not satisfy presence; duplicates count once. Available sources are evaluated independently using trimmed non-empty values, so an empty source never masks a present value elsewhere. Only missing names are returned, alphabetically sorted and untruncated; the reporter owns the display limit.
+- Missing/disappearing example maps to skipped; empty/comment-only example passes with zero required variables without reading optional sources. Optional `ENOENT` is ignored, including read races; other filesystem/parser failures map to `error` with `Scanner could not complete`. Error contents and environment values never enter results. File reads use absolute paths from the shared context.
+- Added exact runtime dependency `dotenv` 18.0.4 after npm metadata and installed manifest/types/README inspection; Node >=12 satisfies the existing baseline. The initial sandbox npm lookup failed with EACCES; network-enabled lookup/install succeeded without peer warnings. A PowerShell inline-code quoting failure was corrected by piping a literal script to Node; the native named ESM import then passed. No dependency or runtime-scope deviation was needed.
+- Added 33 unit cases and 8 integration cases covering approved sources, absent/empty/whitespace values, comments/quotes/duplicates, union presence, sorted complete missing-name lists, absence/read races/errors, duration, environment preservation, secret sentinel exclusion, and Nest injection. Real fixtures use temporary directories (including spaces), confirm byte-identical input files, and use directories in place of files for actual read errors. Permission-denied paths are mocked; no OS permission changes are required.
+- A native helper (`test/helpers/env-scanner-probe.ts`) loads the production `dist` scanner/module through Nest, checks environment preservation, and lets the integration test independently assert exit code, stdout, stderr, and result shape. The helper remains outside production output.
+- Review identified inherited environment properties as an edge case: a declared name such as `toString` must not be mistaken for a real environment value. Added `Object.hasOwn` and two regression cases. Empty-contract short-circuiting and local handling of raw filesystem/parser failures are recorded in the plan and registry.
+- `npm run build`, `npm run test:compile`, and an initial 39-case focused run passed. The first full run passed 243 tests; after the inherited-property fix, `NO_COLOR=1 npm test -- --maxWorkers=4` passed production/test compilation and all 245 tests across 20 files. Four workers reduce the previously documented npm-subprocess timing susceptibility without changing test behavior. Full tests used normal Windows process permissions for fixture-tree cleanup. `git diff --check` passed.
+- Review covered plan alignment, provider/adapter boundaries, names-only results, absence/error handling, dependency compatibility, and tests. No actionable findings remain within Feature 10 scope. Verified on Windows / Node 24.16.0 only; minimum Node, other OSes, full scanner orchestration/reporting, and installed-package smoke tests remain unverified.
+- Next feature: 11 Scanner Registry. Implementation verification was recorded before the Feature 10 commit; the user requested saving the handoff, committing, and pushing on 2026-09-26. Check Git history for the final revision.
 
 ### Feature 09 implementation and verification — 2026-09-25
 
@@ -302,13 +317,13 @@ Known blocker:
 ### Latest Handoff
 
 ```text
-Date: 2026-09-25
-Completed feature: 09 Test Scanner
-Files changed: src/scanners/test/test.scanner.ts (new), src/scanners/scanners.module.ts, test/unit/scanners/test/test.scanner.spec.ts (new), test/integration/test-scanner.integration.spec.ts (new), test/unit/scaffold.spec.ts, context/scanner-registry.md, context/progress-tracker.md
-Tests run and results: npm run build passed; npm test passed all 204 tests across 18 files (189 prior + 15 new)
-Manual verification: integration tests run a real temporary npm project for passing test (passed), failing test (failed, "npm test failed"), missing-script (failed, "package.json has no test script"), and a CI=true-dependent script (passed) with the parent process.env.CI left unchanged; test stdout/stderr is never rendered in summary or details
-Verification limits: Windows / Node 24.16.0 only; Node 22.12, other OSes, installed npm launcher/packaging remain unverified
-Decision or deviation recorded: D5 confirmed — test output-capture overflow and timeout map to failed (not error) per registry/cli-output-rules §171; CI=true injected only for the test subprocess (parent env unchanged); scaffold dist-guard anchored to ^test so the production scanners/test directory is allowed; SCANNERS registry token and wiring remain deferred to Feature 11
-Next feature: 10 Environment Scanner
+Date: 2026-09-26
+Completed feature: 10 Environment Scanner
+Files changed: package.json, package-lock.json, src/scanners/env/env.scanner.ts (new), src/scanners/scanners.module.ts, test/unit/scanners/env/env.scanner.spec.ts (new), test/integration/env-scanner.integration.spec.ts (new), test/helpers/env-scanner-probe.ts (new), context/build-plan.md, context/library-docs.md, context/scanner-registry.md, context/progress-tracker.md
+Tests run and results: production/test builds passed; NO_COLOR=1 npm test -- --maxWorkers=4 passed 245 tests across 20 files (204 prior + 41 new); git diff --check passed
+Manual verification: native dotenv ESM import passed; automated real-file/native production provider fixtures verify results, no value leakage, unchanged environment/files, Nest injection, exit code and output streams
+Verification limits: Windows / Node 24.16.0 only; Node 22.12, other OSes, full scan/report pipeline and installed packaging remain unverified
+Decision or deviation recorded: dotenv 18.0.4 pinned; empty contracts pass without optional reads; only own process.env properties count; any non-empty source satisfies presence; filesystem/parser errors remain safe; SCANNERS registry token and wiring remain Feature 11
+Next feature: 11 Scanner Registry
 Known blocker: None
 ```

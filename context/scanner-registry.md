@@ -228,18 +228,20 @@ process.env   available names
 
 **Pass condition:** Every name declared by `.env.example` has a non-empty value in at least one available source.
 
-**Fail conditions:** One or more declared names are absent or resolve to an empty string.
+**Fail conditions:** One or more declared names have no value in any available source whose trimmed length is greater than zero.
 
 **Skip condition:** `.env.example` does not exist.
 
 **Error conditions:**
 
-- `.env.example` exists but cannot be read
-- File parsing encounters an unexpected adapter failure
+- `.env.example`, `.env`, or `.env.local` exists but cannot be read
+- An existence check or file parsing encounters an unexpected failure
+
+Missing optional files are ignored, including `ENOENT` between existence and read. A missing/disappearing example skips before optional sources are read. An existing empty/comment-only example passes with `0 required variables are present` without reading optional sources.
 
 **Presence rule:**
 
-A required name is present when at least one of `process.env`, `.env.local`, or `.env` supplies a non-empty value. The scanner does not construct a runtime configuration object, so value precedence is deliberately out of scope. Values are not retained in `ScanResult`.
+A required name is present when at least one of `process.env`, `.env.local`, or `.env` supplies a non-whitespace value. The scanner does not construct a runtime configuration object, so value precedence is deliberately out of scope. Example values never satisfy requirements. Within each file, duplicate keys follow `dotenv.parse()` semantics; duplicate required names count once. Only own environment properties count (an inherited name such as `toString` is not an environment value). Values are not retained in `ScanResult`.
 
 **Details policy:**
 
@@ -266,7 +268,7 @@ A required name is present when at least one of `process.env`, `.env.local`, or 
 - Read failure becomes error
 - Duration recorded
 
-**Implementation status:** Not started
+**Implementation status:** Complete — `src/scanners/env/env.scanner.ts`, provided/exported by `src/scanners/scanners.module.ts`. Unit tests in `test/unit/scanners/env/env.scanner.spec.ts`; real-file integration coverage in `test/integration/env-scanner.integration.spec.ts`, including native production provider injection through `test/helpers/env-scanner-probe.ts`. The ordered `SCANNERS` provider remains Feature 11.
 
 ---
 

@@ -18,7 +18,7 @@ TypeScript 5.9 is selected for the documented legacy-decorator/NodeNext toolchai
 
 Verification: the final `npm install --no-audit --no-fund --strict-peer-deps` completed without warnings on Windows with Node 24.16.0/npm 11.13.0. `npm test` with `NO_COLOR=1` passed the production build, test compilation, and six scaffold checks, including constructor injection and rejection of a missing dependency. The CLI help smoke test uses the production `dist/main.js`.
 
-The remaining approved runtime libraries (dotenv, Chalk, Ora) will be installed when their features are implemented. No lint or coverage script is exposed until its tooling is configured. nest-commander brings its own transitive command, discovery, configuration, and prompt dependencies; these do not authorize separate application layers or interactive product features.
+Feature 10 adds dotenv as documented below. The remaining approved runtime libraries (Chalk, Ora) will be installed when their features are implemented. No lint or coverage script is exposed until its tooling is configured. nest-commander brings its own transitive command, discovery, configuration, and prompt dependencies; these do not authorize separate application layers or interactive product features.
 
 Vitest 5.0.1 declares Node `^22.12.0 || ^24.0.0 || >=26.0.0`. The product runtime baseline remains `>=22.12.0`; contributors must use a Node version supported by the test runner, such as Node 22.12+ on the 22.x line or Node 24.x.
 
@@ -253,6 +253,14 @@ Execa's descendant cleanup is best-effort (process groups on POSIX; taskkill on 
 **Official repository/docs:** <https://github.com/motdotla/dotenv>
 
 Shipcheck parses environment files without loading them into the CLI process.
+
+### Feature 10 Dependency Selection — 2026-09-26
+
+Pinned `dotenv` 18.0.4 as an approved runtime dependency for environment-file parsing. npm metadata and the installed manifest declare Node >=12, compatible with Shipcheck's Node >=22.12 baseline, with no runtime dependencies. Installation used `--save-exact --no-audit --no-fund --strict-peer-deps` and completed without peer warnings. No relevant dotenv skill or documentation MCP was available in the active catalog; the upstream documentation and installed README/declarations were inspected directly.
+
+The installed export resolves to `dist/index.cjs`, with declarations in `dist/index.d.ts`. `parse(string | Buffer)` returns a string-valued key map; the supported options type contains `fast`, although the README still shows a debug option. Shipcheck calls `parse(content)` without options. A native Node ESM smoke check verified `import { parse } from "dotenv"`; production/test compilation and all 245 tests across 20 files passed, including native production provider injection and environment-preservation checks. Verification used Windows / Node 24.16.0; minimum Node and other OSes remain unverified.
+
+Only parsed keys define the example contract. Optional files are reduced immediately to names with non-whitespace values; no merged configuration object is created. Within a single file, duplicate keys follow the parser's last declaration; across files and `process.env`, any non-empty source satisfies presence. Parsing is permissive (unrecognized lines do not establish required names); no syntax validator, interpolation, or value-format validation is added. An empty parsed contract passes with zero required variables.
 
 ### Correct Pattern
 
