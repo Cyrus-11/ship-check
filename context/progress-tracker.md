@@ -325,7 +325,7 @@ Files changed: src/scanners/scanner.tokens.ts (new), src/scanners/scanners.modul
 Tests run and results: production/test builds passed; seven focused registry checks passed; NO_COLOR=1 npm test -- --maxWorkers=4 passed 252 tests across 22 files (245 prior + seven new); git diff --check passed
 Manual verification: scoped code review found no actionable findings; automated native production probe verifies ordered provider identity, successful exit and clean streams; existing CLI regressions passed
 Verification limits: Windows / Node 24.16.0 only; Node 22.12, other OSes, full scan/report pipeline and installed packaging remain unverified
-Decision or deviation recorded: fixed Scanner[] factory reuses singleton providers; concrete exports retained; ScanModule imports ScannersModule; ScanService injection/execution remains Feature 12; no dependency change. Full tests used normal Windows process permissions. Work remains uncommitted
+Decision or deviation recorded: fixed Scanner[] factory reuses singleton providers; concrete exports retained; ScanModule imports ScannersModule; ScanService injection/execution remains Feature 12; no dependency change. Full tests used normal Windows process permissions. Feature 11 committed as 24c0b6a and pushed to origin/main on 2026-09-27; this handoff update follows that push
 Next feature: 12 Scan Orchestration
 Known blocker: None
 ```
