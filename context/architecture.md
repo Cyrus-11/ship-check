@@ -203,7 +203,7 @@ Dependencies flow inward through contracts. Scanners never import the command or
 
 ### Canonical Policy and IDs
 
-`common/constants/scan-order.ts` defines the frozen literal tuple `SCAN_ORDER`: `git`, `build`, `test`, `env`. `ScannerId` is derived from this tuple in `common/types/scanner-id.type.ts`. This is policy data; the `SCANNERS` injection registry remains feature 11.
+`common/constants/scan-order.ts` defines the frozen literal tuple `SCAN_ORDER`: `git`, `build`, `test`, `env`. `ScannerId` is derived from this tuple in `common/types/scanner-id.type.ts`. This is policy data; Feature 11 implements the corresponding `SCANNERS` injection registry in `ScannersModule`.
 
 `common/constants/scoring.ts` defines frozen `SCANNER_WEIGHTS` (25 for each ID, total 100) and `READINESS_THRESHOLDS` (`READY: 90`, `REVIEW: 70`). The weight map is checked against `Record<ScannerId, number>`. The existing `EXIT_CODE` constants are reused unchanged. Domain contracts contain no framework or terminal-library types, and use type-only imports.
 
@@ -300,6 +300,8 @@ const scannerRegistryProvider = {
 ```
 
 The array order is product behavior. Do not sort scanners alphabetically or discover them dynamically in v0.1.
+
+Feature 11 defines the shared symbol in `src/scanners/scanner.tokens.ts`. The private `FactoryProvider<Scanner[]>` in `ScannersModule` reuses the four existing singleton providers and exports the token alongside the concrete scanners. `ScanModule` imports `ScannersModule`, making the registry available for Feature 12 orchestration. `ScanService` still performs discovery and returns its temporary failed-gate result; it does not inject or execute scanners yet. Constructing the module graph performs no scanner checks or target-project file/process operations.
 
 ---
 

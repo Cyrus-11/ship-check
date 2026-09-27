@@ -8,15 +8,17 @@ Update this file after every completed feature. Any engineer or AI agent reading
 
 **Version:** v0.1.0
 
-**Phase:** Phase 3 — Scanners
+**Phase:** Phase 4 — Orchestration and Reporting
 
 **In progress:** None
 
-**Last completed:** 10 Environment Scanner
+**Last completed:** 11 Scanner Registry
 
-**Next:** 11 Scanner Registry
+**Next:** 12 Scan Orchestration
 
 **Blockers:** None recorded
+
+**Feature 11 — 2026-09-27:** Implemented the shared `SCANNERS` symbol, explicit ordered singleton factory, export from `ScannersModule`, and import into `ScanModule` according to `build-plan.md`. Production/test builds, seven focused registry checks, and all 252 tests across 22 files passed on Windows / Node 24.16.0. Registry composition is complete; scanner execution remains Feature 12.
 
 **Feature 03:** Implemented and verified on 2026-09-21 against the architecture plan in `build-plan.md`. The shell performs no real checks or reporting yet; local/CI exits are `0`/`1` with the temporary failed-gate result.
 
@@ -56,7 +58,7 @@ Update this file after every completed feature. Any engineer or AI agent reading
 - [x] 08 Build Scanner
 - [x] 09 Test Scanner
 - [x] 10 Environment Scanner
-- [ ] 11 Scanner Registry
+- [x] 11 Scanner Registry
 
 ### Phase 4 — Orchestration and Reporting
 
@@ -88,9 +90,9 @@ Update this file after every completed feature. Any engineer or AI agent reading
 
 | Gate                       | Status      | Last verified |
 | -------------------------- | ----------- | ------------- |
-| TypeScript build           | Passed (production/test compilation, domain contract checks, all four scanner sources) | 2026-09-26 |
-| Unit tests                 | Passed (prior checks plus 33 EnvScanner cases with mocked FileSystem/Clock and provider injection) | 2026-09-26 |
-| Integration tests          | Passed (prior checks plus 8 Environment real-file/native provider cases); full scan fixtures pending | 2026-09-26 |
+| TypeScript build           | Passed (production/test compilation, domain contract checks, scanners and registry) | 2026-09-27 |
+| Unit tests                 | Passed (prior checks plus six registry DI/invariant checks) | 2026-09-27 |
+| Integration tests          | Passed (prior checks plus native production registry probe); full scan fixtures pending | 2026-09-27 |
 | Help/version smoke test    | Root/scan help and version passed; invalid usage returns 2 | 2026-09-21 |
 | Local scan smoke test      | Valid target discovered, shell exit 0; real pipeline pending | 2026-09-22 |
 | CI exit-code smoke test    | Valid target shell exit 1 passed; discovery failures exit 2; real report enforcement pending | 2026-09-22 |
@@ -317,13 +319,13 @@ Known blocker:
 ### Latest Handoff
 
 ```text
-Date: 2026-09-26
-Completed feature: 10 Environment Scanner
-Files changed: package.json, package-lock.json, src/scanners/env/env.scanner.ts (new), src/scanners/scanners.module.ts, test/unit/scanners/env/env.scanner.spec.ts (new), test/integration/env-scanner.integration.spec.ts (new), test/helpers/env-scanner-probe.ts (new), context/build-plan.md, context/library-docs.md, context/scanner-registry.md, context/progress-tracker.md
-Tests run and results: production/test builds passed; NO_COLOR=1 npm test -- --maxWorkers=4 passed 245 tests across 20 files (204 prior + 41 new); git diff --check passed
-Manual verification: native dotenv ESM import passed; automated real-file/native production provider fixtures verify results, no value leakage, unchanged environment/files, Nest injection, exit code and output streams
+Date: 2026-09-27
+Completed feature: 11 Scanner Registry
+Files changed: src/scanners/scanner.tokens.ts (new), src/scanners/scanners.module.ts, src/scan/scan.module.ts, test/unit/scanners/scanners.module.spec.ts (new), test/helpers/scanner-registry-probe.ts (new), test/integration/scanner-registry.integration.spec.ts (new), context/build-plan.md, context/architecture.md, context/library-docs.md, context/scanner-registry.md, context/progress-tracker.md
+Tests run and results: production/test builds passed; seven focused registry checks passed; NO_COLOR=1 npm test -- --maxWorkers=4 passed 252 tests across 22 files (245 prior + seven new); git diff --check passed
+Manual verification: scoped code review found no actionable findings; automated native production probe verifies ordered provider identity, successful exit and clean streams; existing CLI regressions passed
 Verification limits: Windows / Node 24.16.0 only; Node 22.12, other OSes, full scan/report pipeline and installed packaging remain unverified
-Decision or deviation recorded: dotenv 18.0.4 pinned; empty contracts pass without optional reads; only own process.env properties count; any non-empty source satisfies presence; filesystem/parser errors remain safe; SCANNERS registry token and wiring remain Feature 11
-Next feature: 11 Scanner Registry
+Decision or deviation recorded: fixed Scanner[] factory reuses singleton providers; concrete exports retained; ScanModule imports ScannersModule; ScanService injection/execution remains Feature 12; no dependency change. Full tests used normal Windows process permissions. Work remains uncommitted
+Next feature: 12 Scan Orchestration
 Known blocker: None
 ```

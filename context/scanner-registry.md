@@ -268,7 +268,7 @@ A required name is present when at least one of `process.env`, `.env.local`, or 
 - Read failure becomes error
 - Duration recorded
 
-**Implementation status:** Complete — `src/scanners/env/env.scanner.ts`, provided/exported by `src/scanners/scanners.module.ts`. Unit tests in `test/unit/scanners/env/env.scanner.spec.ts`; real-file integration coverage in `test/integration/env-scanner.integration.spec.ts`, including native production provider injection through `test/helpers/env-scanner-probe.ts`. The ordered `SCANNERS` provider remains Feature 11.
+**Implementation status:** Complete — `src/scanners/env/env.scanner.ts`, provided/exported by `src/scanners/scanners.module.ts`. Unit tests in `test/unit/scanners/env/env.scanner.spec.ts`; real-file integration coverage in `test/integration/env-scanner.integration.spec.ts`, including native production provider injection through `test/helpers/env-scanner-probe.ts`. Included in the completed Feature 11 registry below.
 
 ---
 
@@ -299,7 +299,9 @@ The module registers each concrete scanner and exposes one explicit ordered regi
 - Weights are all 25
 - Total configured weight is 100
 
-**Implementation status:** Not started
+**Implementation status:** Complete — shared symbol in `src/scanners/scanner.tokens.ts`; explicit `FactoryProvider<Scanner[]>` in `ScannersModule`, exported alongside the four concrete singletons and imported by `ScanModule`. The registry returns existing instances without running checks. `ScanService` consumption/execution remains Feature 12.
+
+Verification: six DI tests in `test/unit/scanners/scanners.module.spec.ts` cover the required invariants, singleton identity, export visibility, missing-import failure, and construction/cleanup without scanner or file/process calls. `test/integration/scanner-registry.integration.spec.ts` runs `test/helpers/scanner-registry-probe.ts` against production `dist/` modules and the matching symbol. Production/test builds and all 252 tests across 22 files passed on Windows / Node 24.16.0 on 2026-09-27.
 
 ---
 

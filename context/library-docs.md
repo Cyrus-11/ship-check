@@ -123,6 +123,16 @@ export class ScoringService {
 
 ---
 
+### Feature 11 Registry Composition — 2026-09-27
+
+Nest common/core/testing remain pinned and installed at 11.2.5. Inspected `FactoryProvider`, `InjectionToken`, and `ModuleMetadata` declarations and the installed core factory-dependency resolver, alongside the official [custom-provider](https://docs.nestjs.com/fundamentals/custom-providers) and [module](https://docs.nestjs.com/modules) documentation. Version-specific v11 web pages were unavailable during planning; installed declarations/source supplied the version-specific evidence. No dependency or engine change was needed.
+
+`ScannersModule` uses a `FactoryProvider<Scanner[]>` under the shared `SCANNERS` symbol, explicitly injecting Git, Build, Tests, and Environment in that order. It exports the token and retains concrete exports; `ScanModule` imports it. The factory returns existing singleton instances without running them. Test consumers use `@Inject(SCANNERS)` to prove export visibility; unrestricted container lookup alone would not prove the module boundary. The native probe imports both the token and provider classes from `dist/` to preserve symbol identity.
+
+Production/test builds, seven focused registry checks, and all 252 tests across 22 files passed on Windows / Node 24.16.0. Tests verify order, unique IDs, weights, instance identity, export visibility and missing-import failure, construction without file/process operations, and native production DI. `ScanService` consumes the collection only in the later orchestration feature.
+
+---
+
 ## nest-commander
 
 **Official docs:**

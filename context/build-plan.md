@@ -586,23 +586,62 @@ Implement presence-only environment contract validation.
 
 Compose all scanners under one ordered injection token.
 
-**Implementation:**
+**Status:** Implemented and verified on 2026-09-27. Baseline was `main` at `da172d7` (Feature 10); the plan below records the implemented design. Features 01–11 are complete; Feature 12 is next.
 
-- Create `SCANNERS` token
-- Register all four concrete providers
-- Add explicit ordered factory provider
-- Export registry to `ScanModule`
+**Outcome and scope:**
 
-**Acceptance:**
+Make the four existing scanner singletons available as one ordered `Scanner[]` dependency to the scan module. This feature composes providers; actual scanner execution and `ScanService` constructor injection belong to Feature 12. Discovery, the temporary failed-gate result, CLI exits, and output remain unchanged. No dependency, engine, domain-contract, scanner-algorithm, scoring, or reporter change is needed.
 
-- Exactly four scanners are injected
-- IDs are unique
-- Order is Git, Build, Tests, Environment
-- Weights total 100
+**Design decisions:**
 
-**Tests:**
+- Define `export const SCANNERS = Symbol("SCANNERS")` in `src/scanners/scanner.tokens.ts`. Import that same token everywhere; do not recreate symbols or use a string/global-symbol registry.
+- Keep the existing four concrete providers in `ScannersModule`. Add a private factory provider typed `FactoryProvider<Scanner[]>`, with `inject: [GitScanner, BuildScanner, TestScanner, EnvScanner]` and an explicitly typed factory returning `[git, build, test, env]`. Nest supplies the existing instances; the factory does not construct or execute scanners.
+- Preserve the documented `Scanner[]` shape. Use the explicit factory order and test it against `SCAN_ORDER`; do not sort, discover providers dynamically, add a registration API, or introduce runtime validation for this fixed internal registry. Tests enforce membership and weight invariants.
+- Export `SCANNERS` alongside the existing concrete exports, which are used by current scanner tests and native probes. Import `ScannersModule` into `ScanModule` alongside `InfrastructureModule`. Keep `ScanModule` exporting only `ScanService`; its downstream command layer does not need scanner access.
+- Leave `ScanService` unchanged until orchestration consumes the registry. Module construction must not invoke `run()`, read target project files, or start Git/npm. Missing DI dependencies remain bootstrap failures handled by the existing safe boundary; no partial-registry fallback is added.
 
-- Registry invariant tests from `scanner-registry.md`
+**Compatibility and documentation evidence:**
+
+Manifest, lockfile, and installed Nest common/core/testing agree on 11.2.5. Inspected installed `FactoryProvider`, `InjectionToken`, and `ModuleMetadata` declarations and factory-dependency resolution in Nest core. These APIs support symbol tokens, typed factory values, explicit injection arrays, and token exports within the existing Node >=22.12 / strict NodeNext toolchain. No relevant installed Nest skill or documentation MCP tool was advertised.
+
+The official [custom-provider documentation](https://docs.nestjs.com/fundamentals/custom-providers) describes ordered factory injection and exporting custom providers; [module documentation](https://docs.nestjs.com/modules) describes module visibility. The linked v11-specific documentation pages could not be fetched during planning, so installed 11.2.5 declarations/source are the version-specific evidence. No incompatible API was identified; actual composition still requires the build and DI checks below.
+
+**Affected areas (new paths proposed):**
+
+| Path | Responsibility |
+| --- | --- |
+| `src/scanners/scanner.tokens.ts` (new) | Shared symbol token |
+| `src/scanners/scanners.module.ts` | Ordered factory and token export |
+| `src/scan/scan.module.ts` | Import the scanner module |
+| `test/unit/scanners/scanners.module.spec.ts` (new) | Registry invariants, identity, export visibility, and side-effect-free construction |
+| `test/helpers/scanner-registry-probe.ts` (new), `test/integration/scanner-registry.integration.spec.ts` (new) | Small native probe of production `dist/` module/token composition |
+| `context/scanner-registry.md`, `context/progress-tracker.md`, `context/architecture.md`, `context/library-docs.md` | Record implemented wiring and actual verification after completion |
+
+**Ordered implementation:**
+
+1. Add the token and factory to the existing scanner module, retaining concrete providers and exports. Use type-only imports for `Scanner` and `FactoryProvider`, plus runtime `.js` extensions.
+2. Import `ScannersModule` into `ScanModule`. Do not inject an unused registry into `ScanService` or start the pipeline.
+3. Add tsc-compiled DI tests and a small native production probe. Close every test module in `finally`. Native imports must obtain the token and modules from the same `dist/` tree; mixing emitted source and production symbols would test a different token.
+4. Run the focused tests, then the complete quality gates below. Update the registry and tracker only with observed results; Feature 12 becomes next only after Feature 11 passes.
+
+**Acceptance and verification:**
+
+| Criterion | Check |
+| --- | --- |
+| Exactly four unique scanners in canonical order | Resolve `SCANNERS`; assert length 4, unique IDs, IDs equal `SCAN_ORDER`, and names Git/Build/Tests/Environment |
+| Each weight is 25 and total is 100 | Check resolved provider weights against `SCANNER_WEIGHTS`, the individual values, and total |
+| Factory reuses singleton instances | Compare each registry entry by identity with its concrete provider; repeated token resolution returns the same array |
+| Token is actually exported | Compile a test-only consumer with `@Inject(SCANNERS)` in a module importing `ScannersModule`; a consumer lacking that import must fail dependency resolution. A global `moduleRef.get()` alone does not prove export visibility |
+| Actual scan-module composition reaches the registry | Compile a test module importing only `ScanModule` and resolve the registry and `ScanService`; the separate consumer test above proves the export boundary |
+| Registration performs no checks | Spy on scanner `run()` and adapter file/process methods; compile/resolve/close without any calls |
+| Production artifacts have working DI | Native probe imports production `ScanModule` and its matching token, resolves four providers, reports only IDs/weights/identity checks, and closes cleanly; assert exit 0, expected stdout, and empty stderr |
+| Existing public behavior remains intact | Existing compiled CLI tests retain help/version, shell local/CI exits 0/1, discovery/usage exits 2, safe output, and cleanup |
+
+Run `npm run build` and `npm run test:compile`, followed by focused compiled registry tests using the installed Vitest binary. Then run `npm test -- --maxWorkers=4` with `NO_COLOR=1`; its pretest also covers both compilations. Use normal Windows process-management permissions for the full suite because the existing descendant-cleanup fixture requires them. Run `git diff --check`. No lint script is configured. Record platform limits; minimum Node, other operating systems, full pipeline fixtures, and installed-package verification remain their existing gaps.
+
+**Planning verification:** Source, module boundaries, dependency versions, installed declarations, and documentation were inspected. No build or tests were run during planning, and no production/test implementation was changed.
+
+**Completion:** Added the symbol, singleton factory, token export, and `ScanModule` import as planned. Six unit/DI checks and one native production check passed; `npm run build`, `npm run test:compile`, and `NO_COLOR=1 npm test -- --maxWorkers=4` passed all 252 tests across 22 files. Full tests used normal Windows process-management permissions. Scoped review found no actionable findings across plan alignment, module/contract integrity, and failure/regression coverage. Existing CLI and scanner behavior passed regression checks. No dependency or engine change was made; minimum Node, other OSes, complete scan/report execution, and packaging remain unverified. `git diff --check` passed.
 
 ---
 
