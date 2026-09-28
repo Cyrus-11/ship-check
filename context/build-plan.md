@@ -647,33 +647,90 @@ Run `npm run build` and `npm run test:compile`, followed by focused compiled reg
 
 ## Phase 4 — Orchestration and Reporting
 
+**Approved sequencing adjustment — 2026-09-28:** Feature 12's complete contract requires the `ScoringService` and `TerminalReporter` that Features 13 and 14 introduce. The user approved implementing Phase 4 in the order **13 → 14 → 12 → 15**, while retaining the feature numbers and scopes below. This keeps Feature 12 as the single integration point that activates the real pipeline. It avoids temporary orchestration result types, inline scoring, a no-op reporter, and silent execution of repository-owned build/test scripts. Feature 15 remains the compiled-CLI verification milestone for exit behavior after Feature 12 returns a real report.
+
 ### 12 Scan Orchestration
 
 Run the complete scanner pipeline safely and sequentially.
 
-**Implementation:**
+**Status:** Architected on 2026-09-28; implementation has not started. Baseline is clean `main`/`origin/main` at `966dd72`, with Feature 11 implemented at `24c0b6a`. The Phase 4 sequencing adjustment is approved; Feature 12 waits for Features 13 and 14 to supply its scoring and reporter contracts.
 
-- Build context through project discovery
-- Execute scanners in registry order
-- Measure whole-scan duration
-- Catch unexpected failure per scanner
-- Continue after failed/error results
-- Pass results to scoring
-- Pass final report to reporter
+**Outcome and scope:**
 
-**Acceptance:**
+Replace the temporary failed-gate shell with the real orchestration path. `ScanService.scan()` discovers the current project, executes exactly the four registered scanners sequentially, converts an unexpected throw from one scanner into its own safe `error` result, calculates readiness through `ScoringService`, assembles one complete `ScanReport`, renders it once through `TerminalReporter`, and returns that same report to `ScanCommand`. The command remains the owner of process exit selection.
 
-- Scanner calls are sequential
-- Later scanners run after a failure or error
-- One result exists for every registry item
-- Reporter receives exactly one final report
+This feature connects existing components. It does not change scanner algorithms, score policy, reporter formatting, output tokens, CLI options, discovery rules, subprocess behavior, or package-manager/language support. It adds no dependency. Full representative repository fixtures remain Feature 16; installed-package execution remains Feature 17.
 
-**Tests:**
+**Prerequisite contracts supplied by Features 13 and 14:**
 
-- Order test
-- Continue-after-failure test
-- Continue-after-throw test
-- Final report assembly test
+- `ScoringService.calculate(results)` returns `Pick<ScanReport, "score" | "status" | "gatePassed">`. It receives completed results only and owns no project metadata, duration, output, or exit behavior.
+- `TerminalReporter.startScanner(id, { ci })` starts or no-ops the reporter-owned progress state; `stopScanner()` always clears it; `report(report, { ci })` writes one final completed report. The reporter owns all Chalk/Ora/writer/capability logic and never executes a scanner.
+- `ScoringModule` and `ReporterModule` export those providers. `ScanModule` imports them with the already imported InfrastructureModule and ScannersModule. Exact method names become controlling contracts when the prerequisite feature plans are implemented; if their architecture work finds a necessary change, update this plan before Feature 12 code.
+
+**Orchestration design:**
+
+1. Inject `FileSystem`, `@Inject(SCANNERS) Scanner[]`, `Clock`, `ScoringService`, and `TerminalReporter` into `ScanService`. Keep the existing public `discover()` behavior and project-error mapping unchanged. Use the exported symbol instance; an interface cannot act as a Nest runtime token. Nest common/core/testing remain pinned at 11.2.5.
+2. In `scan(options)`, read the whole-scan start time immediately before discovery. Discovery failure remains fatal: run no scanner, scoring, progress, or final report, and let `ProjectDiscoveryError` reach bootstrap for exit `2`.
+3. Iterate the injected array with `for...of` and `await` each `scanner.run(context)` before advancing. Do not use `Promise.all`, sorting, filesystem discovery, or scanner-to-scanner calls. Pass the same `ScanContext` object to every scanner.
+4. Before each scanner, call `TerminalReporter.startScanner(scanner.id, { ci: context.ci })`; always call `stopScanner()` in `finally`. Take a separate scanner-error start reading immediately before `scanner.run()`. A normal `passed`, `failed`, `skipped`, or `error` result is appended unchanged and never stops the loop.
+5. Catch an unexpected `unknown` throw from an individual scanner and append one safe result using the registry provider's own identity and weight: `status: "error"`, `summary: "Scanner could not complete"`, `details: []`, and `durationMs: Math.round(clock.now() - scannerStart)`. Do not copy, serialize, log, or retain the caught value. This safety boundary handles programming/adapter surprises that concrete scanners intentionally rethrow; it does not relabel discovery, scoring, reporter, or Clock failures.
+6. After all results exist, call `ScoringService.calculate(results)` exactly once. Read the whole-scan end time after scoring and before rendering, so report duration includes discovery, scanner execution, progress orchestration, and scoring, but excludes final rendering because duration is already a field in the rendered report. Round the non-negative elapsed value once with `Math.round`.
+7. Assemble a complete `ScanReport` from `context.projectName`, `context.cwd`, the ordered results, calculated score/status/gate, and duration. Call `TerminalReporter.report(report, { ci: context.ci })` exactly once, then return the identical report object. `ScanCommand` awaits the service and uses its existing narrow gate selector, so output completes before `process.exitCode` is assigned.
+8. Let progress, scoring, final-report, and unexpected Clock failures propagate to the existing safe bootstrap boundary. Those are command failures, not scanner results. A progress failure may stop the pipeline; the continue-after-error guarantee applies to scanner outcomes and scanner throws.
+
+**Security and behavior boundaries:**
+
+- The synthesized error result contains only the scanner's declared ID, display name, weight, canonical summary, empty details, and measured duration. Tests use a sentinel throw value and assert it appears nowhere in the result, rendered output, stdout, or stderr.
+- Shipcheck-owned operations remain read-only. Build and test scanners execute trusted repository-owned scripts sequentially and may have side effects. No orchestration test runs Shipcheck's own `npm test` through `shipcheck scan`, which would recurse.
+- The registry order remains the output/result order even when earlier checks fail, return `error`, or throw. There is exactly one result per injected registry entry; no retries or deduplication.
+- Reporter/scoring failures do not fabricate a report or gate. Bootstrap prints the existing safe fatal message and selects exit `2`. A completed report is the only path to local/CI release-gate exits.
+
+**Affected areas:**
+
+| Path | Responsibility |
+| --- | --- |
+| `src/scan/scan.service.ts` | Inject collaborators; sequential loop; throw isolation; report assembly/rendering |
+| `src/scan/scan.module.ts` | Import completed scoring and reporter modules |
+| `test/unit/scan/scan.service.spec.ts` | Preserve discovery coverage; add orchestration, failure isolation, duration, scoring, reporting, and leakage cases |
+| `test/helpers/scan-orchestration-probe.ts` (new, proposed) | Resolve production `dist/` DI with controlled registry/adapters and emit non-sensitive observations |
+| `test/integration/scan-orchestration.integration.spec.ts` (new, proposed) | Verify compiled provider composition, sequential completion, report identity/content, and clean streams without real project scripts |
+| `test/helpers/scan-probe.ts`, `test/unit/commands/scan.command.spec.ts` | Replace gate-only service stubs with complete reports after `scan()` returns `ScanReport` |
+| `test/integration/scan-command.integration.spec.ts` | Remove temporary-shell assertions; prevent recursive self-scan; retain parser/discovery/lifecycle coverage with controlled probes |
+| `README.md`, `context/architecture.md`, `context/cli-output-rules.md`, `context/library-docs.md`, `context/build-plan.md`, `context/progress-tracker.md` | Remove temporary-shell claims and record the activated pipeline and actual evidence |
+
+The prerequisite scoring/reporter source and tests belong to Features 13 and 14 and are not Feature 12 changes.
+
+**Ordered implementation after prerequisites:**
+
+1. Recheck the final exported ScoringService and TerminalReporter APIs against this plan and update the plan first if the prerequisite implementation required a different contract.
+2. Refactor ScanService tests around a builder that supplies FileSystem, registry, Clock, scoring, and reporter fakes. Preserve every existing discovery case before adding orchestration behavior.
+3. Implement constructor injection, the sequential scanner loop, private safe-error creation, score/report assembly, one final reporter call, and full `ScanReport` return. Update ScanModule imports; verify real constructor metadata through tsc rather than assertions alone.
+4. Update command mocks/probes for complete reports. Replace tests that run `shipcheck scan` against Shipcheck's own repository with injected scan results or isolated projects, avoiding recursive `npm test`. Retain real discovery failures and a minimal valid project whose missing scripts cannot execute repository code.
+5. Add the production-DI orchestration probe using controlled fake scanners. Assert call ordering and streams without leaking the sentinel or invoking Git/npm. Do not duplicate Feature 16's representative fixture matrix.
+6. Run focused compiled tests, then the complete suite and scoped review. Update documentation/tracker only with observed evidence and mark Feature 12 complete only when all criteria below pass.
+
+**Acceptance and verification:**
+
+| Criterion | Evidence |
+| --- | --- |
+| Discovery happens once before scanning | FileSystem reads only `<cwd>/package.json`; every scanner receives the same returned context object |
+| Execution is strictly sequential | A deferred first scanner prevents the second from starting; observed start/finish order matches `git, build, test, env` |
+| Ordinary failure/error does not abort | Later scanners run after earlier scanners return `failed` or `error`; original results are preserved unchanged |
+| Unexpected throw becomes safe data | Throwing scanner yields the exact canonical `error` result with provider metadata and measured duration; sentinel cause is absent; later scanners still run |
+| One result per registry entry | Returned/report results length and order equal the injected registry for mixed pass/fail/skip/error/throw outcomes |
+| Progress lifecycle is balanced | One start/stop pair surrounds each scanner, including a throw; CI is forwarded; no second scanner starts before the first stops |
+| Scoring runs once after all scanners | Scoring receives the complete ordered results and is not called after discovery failure or before the last scanner settles |
+| Complete report is coherent | Project/cwd come from context; score/status/gate come from scoring; duration uses the documented boundary; no package data or internal error enters it |
+| Rendering and return identity are exact | Reporter receives exactly one final report after scoring; `scan()` returns that same object only after reporting finishes |
+| Non-scanner failures stay fatal | Discovery, scoring, progress, report, or Clock rejection propagates; no partial/fabricated report or gate is returned |
+| Production DI works | Native probe loads production modules/tokens from one `dist/` tree, resolves ScanService, observes controlled sequential execution, exits 0, and keeps stderr empty |
+| Existing CLI boundaries survive | Help/version/usage/discovery/lifecycle tests pass; command remains the only layer setting exit codes; no recursive self-scan occurs |
+
+Run `npm run build` and `npm run test:compile`, then focused emitted orchestration tests through the installed Vitest binary. Run `NO_COLOR=1 npm test -- --maxWorkers=4` with normal Windows process-management permissions because the existing infrastructure fixture requires descendant cleanup. Run `git diff --check` and inspect runtime imports so only ScanService orchestrates and only TerminalReporter presents. No lint script is configured.
+
+**Verification limits:** Planning inspected the source, all ordered context files, installed Nest 11.2.5 declarations, and official Nest provider/custom-provider/module documentation. No build or tests were run during planning. Minimum Node 22.12, other OSes, representative full-project fixtures, and installed package execution remain later verification gaps.
+
+**Decisions:** The user approved the Phase 4 implementation order **13 → 14 → 12 → 15** on 2026-09-28. No Feature 12 design question remains open; implement it after the two prerequisite providers are complete.
 
 ---
 
@@ -681,34 +738,92 @@ Run the complete scanner pipeline safely and sequentially.
 
 Implement equal-weight readiness scoring.
 
-**Implementation:**
+**Status:** Implemented and verified on 2026-09-28. The user approved the Phase 4 order **13 → 14 → 12 → 15**; Feature 14 is next. The baseline was `main`/`origin/main` at `966dd72`, plus the uncommitted Feature 12/13 planning updates in this file and `progress-tracker.md`. The design below records the implemented contract.
 
-- Exclude skipped results from denominator
-- Include error results as applicable and not passed
-- Round final percentage once
-- Map score to status
-- Map status to gate decision
+**Outcome and scope:**
 
-**Acceptance:**
+Add a dependency-free Nest provider that converts completed scanner results into the score, readiness status, and release-gate decision required by a `ScanReport`. Export it through a dedicated `ScoringModule` so Feature 12 can consume it without duplicating policy. This feature does not run scanners, discover projects, assemble reports, print output, set exit codes, or activate the real scan pipeline. The existing temporary scan shell remains in place until Feature 12. No package or engine change is required.
 
-- Four passes → 100, READY, passed gate
-- Three of four pass → 75, REVIEW, failed gate
-- Two of four pass → 50, NOT READY, failed gate
-- Three passes plus one skip → 100, READY, passed gate
-- Boundaries 69, 70, 89, and 90 map correctly
+**Public provider contract:**
 
-**Tests:**
+```ts
+public calculate(
+  results: readonly ScanResult[],
+): Pick<ScanReport, "score" | "status" | "gatePassed">
+```
 
-- Table-driven score cases
-- Threshold boundary cases
-- Error and skip cases
-- Zero-denominator defensive case
+Use a readonly array view so scoring cannot reorder or replace the caller's result entries. Return a new projection object. Keep `ScanReport.results` itself unchanged; this method signature is the narrower provider boundary, not a domain-contract migration. `ScoringModule` provides and exports `ScoringService`; do not import the module into `ScanModule` until Feature 12 consumes it.
+
+**Scoring algorithm:**
+
+1. Treat every result whose status is not `skipped` as applicable. Sum its `weight` into the denominator.
+2. Sum the weights of applicable `passed` results into the numerator. `failed` and `error` results remain applicable and earn zero points. A skipped result contributes to neither sum, regardless of its weight.
+3. If the denominator is zero, return a score of `0`. Otherwise calculate `(passedWeight / applicableWeight) * 100` and call `Math.round` once on that final percentage. Do not round weights, intermediate sums, or individual checks.
+4. Map the score using `READINESS_THRESHOLDS`: a score at least `READY` is `READY`; otherwise a score at least `REVIEW` is `REVIEW`; all lower scores are `NOT_READY`. Do not duplicate the numeric thresholds in the service.
+5. Set `gatePassed` to true only when the resulting status is `READY`. `REVIEW` and `NOT_READY` both fail the gate.
+
+Use the weight carried by each `ScanResult`. `SCANNER_WEIGHTS` defines the four scanners' canonical weights when results are created; scoring must work from the completed results it is given so skipped checks can be removed from the denominator without scanner-ID branching. The calculation is order-independent and must not sort, filter in place, mutate a result object, or retain the input.
+
+**Trust and failure boundaries:**
+
+- The service accepts the internal completed-result collection supplied by orchestration. Scanner registration and execution own completeness, unique IDs, canonical weights, and one result per scanner.
+- Do not add runtime validation or clamping for duplicate IDs, missing scanners, unknown statuses, negative/non-finite weights, or scores outside the expected internal range. The strict domain types and provider boundaries govern these values; runtime validation would create a second scanner-result policy outside this feature.
+- Empty input and an all-skipped collection are valid defensive cases: denominator zero produces `0`, `NOT_READY`, and `gatePassed: false`.
+- The provider has no logger, writer, process access, environment access, Clock dependency, exception-to-result mapping, or Nest lifecycle work. Arithmetic/type failures are not converted into scan results.
+
+**Affected files:**
+
+| Path | Responsibility |
+| --- | --- |
+| `src/scoring/scoring.service.ts` (new) | Injectable pure calculation and threshold/gate mapping |
+| `src/scoring/scoring.module.ts` (new) | Provide and export `ScoringService` |
+| `test/unit/scoring/scoring.service.spec.ts` (new) | Table-driven policy, boundaries, immutability, and module-export coverage |
+| `context/build-plan.md`, `context/progress-tracker.md` | Record the approved order, controlling design, and observed implementation evidence |
+| `context/scanner-registry.md` | Verify after implementation; no entry changes are expected because scoring does not alter scanner behavior |
+
+`context/architecture.md`, `context/cli-output-rules.md`, and `context/library-docs.md` already describe this policy and provider boundary. Update them only if implementation uncovers a real discrepancy; do not duplicate the plan. No native subprocess fixture is proposed because this provider performs synchronous arithmetic and has no platform integration. The tsc-compiled Nest test must still prove that the exported module/provider metadata works.
+
+**Ordered implementation:**
+
+1. Add failing table-driven tests for canonical four-scanner outcomes, skip/error handling, zero denominator, exact thresholds, rounding, and input immutability. Build reusable typed result factories without weakening strict types.
+2. Add `ScoringService` with `@Injectable()`, the narrow `calculate` signature, one-pass or equivalent non-mutating aggregation, threshold mapping from the shared constants, and a new return object.
+3. Add `ScoringModule` with explicit `providers` and `exports`. In the compiled unit suite, import that module into a Nest testing module, resolve the service through Nest, and close the test module in `finally`.
+4. Run the focused emitted test, production/test compilation, and complete suite. Review imports and source boundaries, verify `scanner-registry.md` is still accurate, then update the tracker with observed evidence. Feature 14 becomes next only after these checks pass.
+
+**Acceptance and test matrix:**
+
+| Case | Expected result |
+| --- | --- |
+| Four 25-point passes | `100`, `READY`, gate true |
+| Three passes and one failure | `75`, `REVIEW`, gate false |
+| Two passes and two failures | `50`, `NOT_READY`, gate false |
+| Three passes and one skip | `100`, `READY`, gate true; skipped weight absent from both sums |
+| Passed plus `error` result | Error weight remains in the denominator and earns zero |
+| Empty input or all skipped | `0`, `NOT_READY`, gate false |
+| Weighted totals yielding 69, 70, 89, and 90 | Status changes exactly at the shared `REVIEW` and `READY` thresholds |
+| Weighted totals yielding 69.4/69.5 and 89.4/89.5 | Final percentage rounds once using JavaScript `Math.round`, then threshold mapping runs |
+| Frozen input array and frozen result objects | Calculation succeeds, returns the expected projection, and leaves references/values unchanged |
+| Nest testing module imports `ScoringModule` | `ScoringService` resolves from the export and repeated lookup returns the module singleton |
+
+Tests may use deliberately varied positive weights to exercise threshold and rounding boundaries that four equal 25-point production results cannot represent. This validates the method's `ScanResult` contract; it does not authorize noncanonical scanner weights in production.
+
+**Verification:**
+
+Run `npm run build` and `npm run test:compile`, then the emitted scoring unit file through the installed Vitest binary. Run `NO_COLOR=1 npm test -- --maxWorkers=4` with normal Windows process-management permissions because the existing infrastructure fixture requires descendant cleanup. Run `git diff --check` and a scoped source review confirming that the scoring directory has no presentation, process, filesystem, scanner execution, or exit behavior. No lint script is configured.
+
+**Implementation evidence — 2026-09-28:** Added the pure service and exporting module with no dependency or domain-contract change. Production/test compilation and all 23 focused scoring checks passed. The full `NO_COLOR=1 npm test -- --maxWorkers=4` run passed all 275 tests across 23 files (252 prior + 23 new), including compilation. The module test injects the exported service into a consumer in the importing module, proving export visibility and singleton identity. `git diff --check` passed; scoped review found no actionable findings. Scanner registry entries remain accurate and required no edit. The module is intentionally not wired into `ScanModule` until Feature 12.
+
+**Verification limits:** Verified on Windows / Node 24.16.0 with installed Nest 11.2.5, TypeScript 5.9.3, and Vitest 5.0.1. Full tests used normal Windows process permissions for existing fixture cleanup. Minimum Node 22.12, other operating systems, full pipeline integration, final report output, release-gate CLI behavior, representative fixtures, and installed-package execution remain later feature gates. No user-visible behavior changed, so no additional manual CLI smoke test was required.
+
+**Open decisions:** None.
 
 ---
 
 ### 14 Terminal Reporter
 
 Implement the complete plain and styled report.
+
+**Feature 12 prerequisite contract:** Export a TerminalReporter that supplies `startScanner(id, { ci })`, `stopScanner()`, and `report(report, { ci })`. These methods own presentation only; ScanService owns scanner execution. Under the approved Phase 4 sequence, implement this feature after Feature 13 and before Feature 12.
 
 **Implementation:**
 

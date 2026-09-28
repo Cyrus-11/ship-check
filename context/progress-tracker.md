@@ -12,11 +12,15 @@ Update this file after every completed feature. Any engineer or AI agent reading
 
 **In progress:** None
 
-**Last completed:** 11 Scanner Registry
+**Last completed:** 13 Scoring Service
 
-**Next:** 12 Scan Orchestration
+**Next:** 14 Terminal Reporter
 
-**Blockers:** None recorded
+**Blockers:** None
+
+**Feature 13 — 2026-09-28:** Implemented `ScoringService.calculate(readonly ScanResult[])` and exported it through `ScoringModule` according to `build-plan.md`. The pure calculation excludes skipped weights, counts failures/errors as applicable without points, rounds the final percentage once, uses shared readiness thresholds, and passes the gate only for READY. Empty/all-skipped input returns zero/NOT_READY/false. Production/test builds, all 23 focused scoring checks, and the full 275-test suite across 23 files passed on Windows / Node 24.16.0. Tests include rounding boundaries, supplied weights, input immutability, independent calls, and injection into an importing module's consumer. Scoped review found no actionable findings; scanner registry verified accurate. No new dependencies or architecture deviations. Pipeline wiring remains Feature 12; Feature 14 is next. The user requested saving, committing, and pushing on 2026-09-28; this handoff precedes those Git operations. Check history/status for their final revision.
+
+**Feature 12 planning — 2026-09-28:** Architecture plan recorded in `build-plan.md` for sequential registry execution, per-scanner throw isolation, scoring, complete report assembly, reporter progress/final output, and production-DI verification. Planning found that Feature 12's required final report and reporter call depend on Features 13 and 14. The user approved the recommended Phase 4 order **13 → 14 → 12 → 15** on 2026-09-28. Feature 12 now waits for those two prerequisite providers; it is not blocked by an unresolved decision. No implementation or tests were run.
 
 **Feature 11 — 2026-09-27:** Implemented the shared `SCANNERS` symbol, explicit ordered singleton factory, export from `ScannersModule`, and import into `ScanModule` according to `build-plan.md`. Production/test builds, seven focused registry checks, and all 252 tests across 22 files passed on Windows / Node 24.16.0. Registry composition is complete; scanner execution remains Feature 12.
 
@@ -63,7 +67,7 @@ Update this file after every completed feature. Any engineer or AI agent reading
 ### Phase 4 — Orchestration and Reporting
 
 - [ ] 12 Scan Orchestration
-- [ ] 13 Scoring Service
+- [x] 13 Scoring Service
 - [ ] 14 Terminal Reporter
 - [ ] 15 CI Exit Enforcement
 
@@ -317,6 +321,20 @@ Known blocker:
 ```
 
 ### Latest Handoff
+
+```text
+Date: 2026-09-28
+Completed feature: 13 Scoring Service
+Files changed: src/scoring/scoring.service.ts (new), src/scoring/scoring.module.ts (new), test/unit/scoring/scoring.service.spec.ts (new), context/build-plan.md, context/progress-tracker.md
+Tests run and results: npm run build and npm run test:compile passed; 23 focused scoring checks passed; NO_COLOR=1 npm test -- --maxWorkers=4 passed compilation and all 275 tests across 23 files; git diff --check passed
+Manual verification: review covered plan alignment, provider boundaries, trust assumptions, skipped/error behavior, rounding/thresholds, gate mapping, input immutability, export visibility and test coverage; no actionable findings. Scanner registry remains accurate. No user-visible behavior change requiring a manual CLI smoke test
+Verification limits: Windows / Node 24.16.0 only; minimum Node 22.12, other OSes, full scan/report integration and installed packaging remain unverified
+Decision or deviation recorded: user approved Phase 4 order 13 → 14 → 12 → 15; scoring follows the plan without dependency changes. Full tests used normal Windows process permissions. ScoringModule is exported but not imported into ScanModule until Feature 12. memory.md consolidated before the user-requested commit/push on 2026-09-28; check Git history/status for the resulting revision rather than replaying this historical request
+Next feature: 14 Terminal Reporter
+Known blocker: None
+```
+
+### Previous Handoff — Feature 11
 
 ```text
 Date: 2026-09-27
