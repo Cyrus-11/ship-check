@@ -4,19 +4,36 @@ Shipcheck is a local-first release-readiness CLI for Node.js and TypeScript repo
 
 ## Current status
 
-**Features 01–07 are complete.** The CLI foundation, shared domain contracts, infrastructure adapters, project discovery, and the Git scanner are implemented and tested. The release-readiness pipeline is still under development.
+**Features 01–11 and 13 are complete.** The CLI foundation, shared domain contracts, infrastructure adapters, project discovery, all four scanners, their ordered registry, and readiness scoring are implemented and tested. The release-readiness pipeline is still under development.
 
-The `scan` command now discovers the target project — it reads `<cwd>/package.json` (no parent traversal) and builds an immutable scan context — but it does not yet run scanners or print a report. For a valid project its temporary result always has a failed release gate, so `scan` exits `0` and `scan --ci` exits `1`; a missing, unreadable, or invalid `package.json` exits `2`. These are development placeholders, not readiness assessments. The Git scanner is implemented with unit and integration tests but is not yet wired into the scan pipeline (orchestration follows). The remaining scanners, scoring, and reporting are unfinished. Only the boolean `--ci` option is accepted; custom paths and flag values are unsupported.
+The `scan` command discovers the target project by reading `<cwd>/package.json` without searching parent directories. It does not yet execute the scanners, calculate a score, or print a report. For a valid project its temporary result always has a failed release gate, so `scan` exits `0` and `scan --ci` exits `1`; a missing, unreadable, or invalid `package.json` exits `2`. These exits are development placeholders, not readiness assessments. Only the boolean `--ci` option is accepted; custom paths and flag values are unsupported.
 
 | Completed area | What is available |
 | --- | --- |
 | CLI foundation (01–03) | TypeScript/native ESM setup, NestJS standalone bootstrap, help/version, strict option parsing, scan command shell, and application cleanup |
 | Domain contracts (04) | Shared scanner/context/report types, fixed scanner order, 25-point weights, and readiness thresholds |
 | Infrastructure adapters (05) | Process execution with timeouts, bounded output and operational errors; read-only filesystem access; monotonic timing; injectable providers |
-| Project discovery (06) | Resolves the working directory once, validates `<cwd>/package.json`, narrows it to a supported subset with a directory-name fallback, and builds the immutable scan context; discovery failures exit `2` with safe messages |
+| Project discovery (06) | Resolves the working directory once, validates `<cwd>/package.json`, narrows it to a supported subset with a directory-name fallback, and builds the scan context; discovery failures exit `2` with safe messages |
 | Git scanner (07) | Read-only `git rev-parse`/`branch`/`status` checks that classify a clean, dirty, or non-repository work tree with a branch name and changed-file count only — no file paths are reported |
+| Build scanner (08) | Evaluates `npm run build`; missing scripts, non-zero exits, timeouts, and output-limit failures fail the check; operational errors are reported separately |
+| Test scanner (09) | Evaluates `npm test` with `CI=true` in the child environment, preserving the parent environment and using the same failure policy as Build |
+| Environment scanner (10) | Parses required names from `.env.example`, checks for non-empty values across `.env`, `.env.local`, and the process environment, and returns missing names only; a missing example skips the check |
+| Scanner registry (11) | Exports the four scanner instances in fixed Git → Build → Tests → Environment order |
+| Scoring service (13) | Calculates the readiness score, status, and release-gate decision from completed results; excludes skipped checks and uses the shared thresholds |
 
-**Next: Feature 08 — Build Scanner.** The remaining scanners, orchestration, scoring, reporting, and executable packaging verification follow. See the [progress tracker](context/progress-tracker.md) and [build plan](context/build-plan.md).
+**Next: Feature 14 — Terminal Reporter.** The approved Phase 4 order is **13 → 14 → 12 → 15** so scoring and reporting are available before orchestration connects the pipeline. Feature 12 is planned; implementation follows the reporter. CI exit enforcement, full-pipeline fixtures, executable packaging verification, and release-candidate documentation follow. See the [progress tracker](context/progress-tracker.md) and [build plan](context/build-plan.md).
+
+## Readiness scoring
+
+The implemented scoring service assigns points from scanner results. Each of the four scanners carries 25 points. Passed checks earn their weight; failed checks and operational errors earn zero. Skipped checks are excluded from the total applicable weight. The final percentage is rounded once to the nearest integer.
+
+| Score | Status | Release gate |
+| --- | --- | --- |
+| 90–100 | `READY` | Pass |
+| 70–89 | `REVIEW` | Fail |
+| 0–69 | `NOT_READY` | Fail |
+
+For example, three passes and one failure produce `75 / REVIEW`, while three passes and one skipped check produce `100 / READY`. Empty or entirely skipped results produce `0 / NOT_READY`. The CLI will use these decisions once orchestration is implemented.
 
 ## Current commands
 
@@ -45,13 +62,17 @@ node dist/main.js scan --help
 npm test
 ```
 
+For the full suite with reduced subprocess contention, use `npm test -- --maxWorkers=4`. The latest verification also set `NO_COLOR=1` (PowerShell: `$env:NO_COLOR = '1'`; POSIX shells: `NO_COLOR=1 npm test -- --maxWorkers=4`).
+
 `npm run dev` watches and recompiles application source. Run the compiled entry point separately after a successful build.
 
 `npm test` first builds production code and compiles the tests with `tsc`, then runs Vitest against `.test-dist/`. This preserves Nest constructor metadata in both builds. Production output in `dist/` contains no tests.
 
-The suite covers CLI help/version, strict usage, local/CI option forwarding and exits, asynchronous cleanup, safe errors, domain contracts, and dependency injection. Adapter tests cover real subprocess output/exits, timeouts, byte limits, environment preservation, filesystem reads, and npm execution from paths containing spaces. Native subprocess probes verify production modules and preserve JSON import attributes in metadata-loader tests. Project discovery is covered for valid, missing, unreadable, and invalid manifests, and the Git scanner is covered by mocked unit cases plus integration tests against real temporary repositories for clean, dirty, and non-repository work trees.
+The suite covers CLI help/version, strict usage, local/CI option forwarding and exits, asynchronous cleanup, safe errors, domain contracts, and dependency injection. Adapter tests cover real subprocess output/exits, timeouts, byte limits, environment preservation, filesystem reads, and npm execution from paths containing spaces. Native subprocess probes verify production modules and preserve JSON import attributes in metadata-loader tests.
 
-**Last verified:** production/test compilation and **175 tests across 14 files passed** on Windows with Node 24.16.0 (2026-09-23). Minimum Node 22.12, other operating systems, and installed Shipcheck packaging remain unverified.
+Project discovery and all four scanners have unit and integration coverage using isolated temporary projects. Registry tests verify order, weights, singleton identity, and provider exports. The scoring service adds 23 checks for result combinations, skipped/error weights, threshold and rounding boundaries, immutable inputs, independent calculations, and module export injection.
+
+**Last verified:** production/test compilation and **275 tests across 23 files passed** on Windows with Node 24.16.0 (2026-09-28). Minimum Node 22.12, other operating systems, the complete scan/report pipeline, and installed Shipcheck packaging remain unverified.
 
 On Windows, the process adapter supports native `.exe`/`.com` commands and the installed `npm.cmd` launcher. Shipcheck passes executable and arguments separately with `shell: false`; Execa handles npm's internal Windows shell launcher. The process-tree tests need permission to run Windows `taskkill`. Restricted sandboxes can prevent descendant cleanup; termination is best-effort and may exceed the configured timeout. See [library notes](context/library-docs.md) for details and supported-launcher limitations.
 
