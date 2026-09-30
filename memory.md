@@ -1,9 +1,9 @@
 # Shipcheck project memory
 
-Updated: 2026-09-28 07:15:35 UTC
-Revision at save: main / origin/main at 966dd72 (Feature 11 handoff; implementation at 24c0b6a).
+Updated: 2026-09-30 08:17:31 UTC
+Revision at save: main at feecb4c (README scoring milestone), matching cached origin/main; scoring implementation committed at fcd9c11. No remote refresh performed.
 Remote: https://github.com/Cyrus-11/ship-check.git
-Snapshot timing: saved before the user-requested Feature 13 commit and push. This snapshot accompanies the scoring implementation and Feature 12/13 planning updates. Verify Git history/status on restore for the resulting commit and push; do not replay this historical commit request.
+Uncommitted work: macOS test-fixture correction in test/unit/infrastructure/process-runner.spec.ts, setup evidence in context/progress-tracker.md, and this handoff. Pre-existing changes affect four .agents/skills/*/SKILL.md files and skills-lock.json, with untracked frontend.md references under architect, recover, and review. Preserve those unrelated changes. No commit or push was requested in this session.
 
 ## Objective and current state
 
@@ -14,6 +14,8 @@ Build Shipcheck v0.1, a NestJS standalone release-readiness CLI for Node.js/Type
 Scope: help, version, scan, scan --ci; four sequential scanners (Git, Build, Tests, Environment). No HTTP server, database, frontend, configuration system, extra scanners, other package managers, or public npm publication. Shipcheck-owned operations are read-only; repository-owned build/test scripts can have side effects. Never expose environment values, raw subprocess output, or error stacks in reports.
 
 Detailed plans and evidence: [build-plan.md](context/build-plan.md), [progress-tracker.md](context/progress-tracker.md), [scanner-registry.md](context/scanner-registry.md), [library-docs.md](context/library-docs.md).
+
+The user requested local setup before architecting Feature 14. This is now complete on macOS with Node 24.21.0 / npm 11.19.0: locked dependencies installed, production/test builds and all 275 tests passed, compiled help/version checked. Feature 14 has not started; Chalk/Ora remain deferred to that feature. No dependency versions or production behavior changed.
 
 ## Implemented boundaries
 
@@ -40,7 +42,7 @@ Avoid recursive CLI tests: never run Shipcheck's own npm test through shipcheck 
 
 ## Durable decisions and lessons
 
-- Baseline: Node >=22.12, native ESM, strict TypeScript NodeNext, runtime .js relative imports, MIT/private package. Verified on Windows / Node 24.16.0. Pinned versions are in package.json and lockfile; Nest common/core/testing 11.2.5, TypeScript 5.9.3, Vitest 5.0.1 remain unchanged. Do not blindly upgrade Nest: nest-commander's discovery dependency required Nest 11 despite broader advertised peers.
+- Baseline: Node >=22.12, native ESM, strict TypeScript NodeNext, runtime .js relative imports, MIT/private package. Verified on Windows / Node 24.16.0 and macOS / Node 24.21.0. Pinned versions are in package.json and lockfile; Nest common/core/testing 11.2.5, TypeScript 5.9.3, Vitest 5.0.1 remain unchanged. Do not blindly upgrade Nest: nest-commander's discovery dependency required Nest 11 despite broader advertised peers.
 - npm test builds production and compiles tests with tsc before Vitest runs .test-dist/test/**/*.spec.js. This preserves Nest constructor metadata. A consumer in an importing module proves provider export visibility; unrestricted moduleRef.get alone does not. Native probes must import symbols/providers from the same dist tree.
 - nest-commander child commands need explicit strictness/throwing exit overrides. Returning from the parser override can allow premature exit. Bootstrap applies process.exitCode after cleanup; cleanup failure can override success.
 - Keep native subprocess coverage for the package-version loader: Vitest data-URL transforms dropped JSON import attributes. Do not weaken production code for that transform.
@@ -48,12 +50,20 @@ Avoid recursive CLI tests: never run Shipcheck's own npm test through shipcheck 
 - The user approved Execa's internal cmd.exe launcher for resolved npm.cmd while retaining shell:false and prohibiting Shipcheck-built shell strings. Windows supports native .exe/.com and npm.cmd; arbitrary batch/shebang launchers and metadata-denied aliases fail safely.
 - Process-tree cleanup is best-effort, not containment or a hard deadline. Windows sandbox taskkill restrictions previously left descendants/pipes alive. Run the full suite with normal Windows process permissions and NO_COLOR=1, using npm test -- --maxWorkers=4. Four workers reduce existing npm fixture contention. The tree fixture uses a ten-second startup allowance and independent emergency cleanup; do not reduce it to the former flaky two seconds.
 - Git fixtures isolate global/system config, hooks, signing, and branch defaults. Runtime scanner commands remain read-only and inherit normal context.
+- Windows simulations must mock executable lookup with a Windows path, not the host process.execPath. The latter lacks .exe on macOS and correctly fails the production Windows executable allowlist. The ProcessRunner unit setup now returns a fixed C:\tools\node.exe path; Execa remains mocked, so this path need not exist.
 - Build/Test timeout and output overflow intentionally map to failed; Git operational failures map to error. Unexpected non-process throws are left for Feature 12 isolation. Real 120-second scanner timeout tests are unnecessary: mapping is unit-tested and adapter timeout has real coverage.
 - Keep the scaffold test's forbidden test-output match anchored to the dist root; dist/scanners/test is legitimate.
 - Environment presence must use Object.hasOwn for process.env (e.g. toString must not count as a value). dotenv parsing is permissive, without config(), interpolation, or syntax validation. Native named ESM import was verified. Its README debug option differs from installed declarations; no parse options are used.
 - PowerShell can strip node -e quotes; prefer literal stdin or a checked-in helper. Windows PowerShell ConvertFrom-Json cannot parse the lockfile's empty-key entry; rg can inspect locked package versions directly. Sandbox setup helpers occasionally fail with access denied: inspect partial results before retrying, use short commands, and request normal permissions when needed. Never blindly replay edits or weaken Git ownership checks.
 
 ## Verification
+
+Local setup, 2026-09-30:
+- Initial npm ci failed with sandbox DNS access denied (ENOTFOUND registry.npmjs.org); the approved network-enabled retry installed 153 packages from the existing lockfile and reported zero vulnerabilities.
+- npm reported an unapproved optional fsevents install script. It was not approved; the current build/test workflow passes without it. Watch mode was not checked.
+- First suite: 274/275 passed. Diagnosed the host-dependent Windows lookup mock and corrected only that test fixture.
+- NO_COLOR=1 npm test -- --maxWorkers=4 then passed production/test compilation and **275 tests across 23 files** on macOS / Node 24.21.0; test execution took 11.28 seconds.
+- node dist/main.js --help and --version passed; version output was 0.1.0. git diff --check passed after the test/tracker updates. Scanner implementation and registry status are unchanged.
 
 Feature 13, 2026-09-28:
 - npm run build and npm run test:compile passed.
@@ -64,12 +74,12 @@ Feature 13, 2026-09-28:
 - No runtime code changed after the passing suite; subsequent edits are documentation/handoff only. No extra user-visible CLI smoke test was needed for this isolated provider.
 - Earlier feature-specific test evidence and review dispositions remain in progress-tracker.md rather than repeated here.
 
-Limits: Windows / Node 24.16.0 only. Minimum Node 22.12, other operating systems, POSIX signal/process groups, full pipeline/report behavior, representative fixtures, and installed packaging remain unverified. v0.1 is not complete.
+Limits: Existing suite verified on Windows and macOS with the Node 24 versions above. Minimum Node 22.12 and Linux remain unverified. Full pipeline/report behavior, representative full-scan fixtures, and installed packaging remain pending. No global npm link was installed. v0.1 is not complete.
 
 ## Next steps
 
 1. Restore Git status/history and read the required context pack.
-2. Architect **Feature 14 Terminal Reporter** against output tokens/rules and the Feature 12 collaborator contract when requested.
+2. Local setup is complete. Architect **Feature 14 Terminal Reporter** against output tokens/rules and the Feature 12 collaborator contract when requested; inspect Chalk/Ora versions, compatibility, and documentation before introducing them.
 3. Implement/verify 14, then 12 and 15, followed by 16–18. The approved order does not require another sequencing decision.
 
 Available commands: npm run build, npm test, npm run dev, and node dist/main.js with --help, --version, scan --help, scan, or scan --ci. Dev watches/recompiles only.

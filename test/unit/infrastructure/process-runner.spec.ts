@@ -28,7 +28,8 @@ function result(overrides: Record<string, unknown> = {}): ReturnType<typeof exec
 }
 
 beforeEach((): void => {
-  vi.spyOn(fileSystem, "resolveWindowsExecutable").mockResolvedValue(process.execPath);
+  // Windows simulations must resolve a Windows executable on every host OS.
+  vi.spyOn(fileSystem, "resolveWindowsExecutable").mockResolvedValue("C:\\tools\\node.exe");
   execute.mockReturnValue(result());
 });
 afterEach((): void => { vi.unstubAllGlobals(); });

@@ -15,12 +15,15 @@ Read the reported problem, relevant code, recent changes, and available errors b
 - A reproduction or failing check, including the relevant environment.
 - Recent changes and any known working state.
 - Previous fixes and what each attempt actually demonstrated.
+- The earliest observable point where the failing case diverges from a known-good case.
 
 Ask only for missing information you cannot obtain. Keep credentials and private data out of diagnostic output.
 
 Separate observations from hypotheses. If evidence is insufficient, identify the next discriminating check instead of asserting a root cause.
 
 For API, database, queue, or integration failures, consult [backend diagnosis](references/backend.md) before retrying operations with side effects.
+
+For broken UI interactions, rendering, forms, or navigation, consult [frontend diagnosis](references/frontend.md). If the failure crosses a service boundary, use the relevant backend guidance too.
 
 ## Choose a recovery mode
 
@@ -36,13 +39,16 @@ Modes can overlap. State the current diagnosis, evidence, and uncertainty. Prefe
 
 1. Reproduce the failure when feasible. Otherwise explain the limit and gather the closest reliable evidence.
 2. Trace the failing behavior through relevant callers and dependencies. Test a specific hypothesis.
-3. Explain the cause and the proposed change. If the user requested a fix, make the focused repair within that scope. For diagnosis-only requests, report it without editing.
-4. Verify the original failure is resolved and check nearby behavior that the change could affect. Use a regression test when it protects meaningful behavior; do not add tests that merely mirror implementation.
-5. Report the change, checks, and remaining uncertainty.
+3. Identify why the defect produces the observed symptom, not merely the line where the symptom appears. Prefer a check that would fail if the causal explanation were wrong.
+4. Explain the cause and the proposed change. If the user requested a fix, make the focused repair within that scope. For diagnosis-only requests, report it without editing.
+5. Verify the original failure is resolved and check nearby behavior that the change could affect. Use a regression test when it protects meaningful behavior; do not add tests that merely mirror implementation.
+6. Report the change, checks, and remaining uncertainty.
 
 If a fix fails, compare the result with the hypothesis before trying again. Undo only changes attributable to your failed attempt when appropriate, preserving the user's work.
 
 Each new attempt should test a new or refined hypothesis. When attempts produce no new evidence, stop patching and state the blocker or propose a different diagnostic approach. Do not restart the session solely because an arbitrary retry count was reached.
+
+Do not weaken validation, suppress errors, broaden exception handling, or remove a failing test merely to make the symptom disappear. Such a change is valid only when the underlying contract is shown to be wrong and the replacement behavior is explicitly supported.
 
 ## Hard reset means context, not file deletion
 
