@@ -8,6 +8,7 @@ import { execa } from "execa";
 import { describe, expect, it } from "vitest";
 
 import { AppModule } from "../../src/app.module.js";
+import { REPORTER_VERSION } from "../../src/reporter/reporter.tokens.js";
 import { ProbeConsumer } from "../helpers/probe-consumer.js";
 import { ProbeDependency } from "../helpers/probe-dependency.js";
 
@@ -61,7 +62,8 @@ describe("project scaffold", (): void => {
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
       providers: [ProbeDependency, ProbeConsumer],
-    }).compile();
+    // The package metadata loader resolves from dist, not the compiled test tree.
+    }).overrideProvider(REPORTER_VERSION).useValue("0.0.0-test").compile();
 
     try {
       expect(moduleRef.get(ProbeConsumer).readValue()).toBe("dependency resolved");

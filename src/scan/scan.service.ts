@@ -1,22 +1,57 @@
 import { basename, join } from "node:path";
 
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 
+import { Clock } from "../infrastructure/clock.service.js";
 import { FileSystem } from "../infrastructure/file-system.service.js";
+import { TerminalReporter } from "../reporter/terminal-reporter.service.js";
+import { SCANNERS } from "../scanners/scanner.tokens.js";
+import { ScoringService } from "../scoring/scoring.service.js";
 import { ProjectDiscoveryError } from "./project-discovery.error.js";
 
+import type { Scanner } from "../common/contracts/scanner.contract.js";
 import type { PackageJson } from "../common/types/package-json.type.js";
 import type { ScanContext } from "../common/types/scan-context.type.js";
 import type { ScanReport } from "../common/types/scan-report.type.js";
+import type { ScanResult } from "../common/types/scan-result.type.js";
 
 @Injectable()
 export class ScanService {
-  public constructor(private readonly fileSystem: FileSystem) {}
+  public constructor(
+    private readonly fileSystem: FileSystem,
+    @Inject(SCANNERS) private readonly scanners: Scanner[],
+    private readonly clock: Clock,
+    private readonly scoring: ScoringService,
+    private readonly reporter: TerminalReporter,
+  ) {}
 
-  public async scan(options: { ci: boolean }): Promise<Pick<ScanReport, "gatePassed">> {
-    await this.discover(options);
-    // A shell that has not evaluated any checks cannot approve a release.
-    return { gatePassed: false };
+  public async scan(options: { ci: boolean }): Promise<ScanReport> {
+    const start = this.clock.now();
+    const context = await this.discover(options);
+    const results: ScanResult[] = [];
+    // Registry order is product behavior: each scanner settles before the next starts.
+    for (const scanner of this.scanners) {
+      this.reporter.startScanner(scanner.id, { ci: context.ci });
+      try {
+        results.push(await this.runScanner(scanner, context));
+      } finally {
+        this.reporter.stopScanner();
+      }
+    }
+    const { score, status, gatePassed } = this.scoring.calculate(results);
+    // Duration covers discovery, scanning, and scoring; rendering is excluded.
+    const durationMs = Math.round(this.clock.now() - start);
+    const report: ScanReport = {
+      projectName: context.projectName,
+      cwd: context.cwd,
+      results,
+      score,
+      status,
+      gatePassed,
+      durationMs,
+    };
+    await this.reporter.report(report, { ci: context.ci });
+    return report;
   }
 
   public async discover(options: { ci: boolean }): Promise<ScanContext> {
@@ -27,6 +62,24 @@ export class ScanService {
     const packageJson = this.projectManifest(this.parseManifest(raw));
     const projectName = this.resolveProjectName(packageJson.name, cwd);
     return { cwd, projectName, packageJsonPath, packageJson, ci: options.ci };
+  }
+
+  private async runScanner(scanner: Scanner, context: ScanContext): Promise<ScanResult> {
+    const start = this.clock.now();
+    try {
+      return await scanner.run(context);
+    } catch {
+      // The thrown value may hold internal detail; it is never copied into the result.
+      return {
+        id: scanner.id,
+        name: scanner.name,
+        status: "error",
+        summary: "Scanner could not complete",
+        details: [],
+        durationMs: Math.round(this.clock.now() - start),
+        weight: scanner.weight,
+      };
+    }
   }
 
   private async readManifest(path: string): Promise<string> {

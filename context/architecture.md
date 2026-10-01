@@ -40,7 +40,7 @@ With nest-commander 3.21.0 / Commander 11.1.0, the root and child commands each 
 
 `src/common/package-version.ts` imports Shipcheck's own package metadata using a URL relative to its compiled module, independent of the scanned project's working directory. This package read does not belong to scanned-project discovery or the future `FileSystem` adapter.
 
-Feature 03 registers `ScanCommand` alongside the root provider. `CommandsModule` imports `ScanModule`, which exports `ScanService`. The command rejects positional arguments explicitly, normalizes its boolean `--ci` option, awaits the service, and selects the completed-command exit through `selectExitCode`. The temporary service returns only `{ gatePassed: false }`, with no discovery, scanners, or output: the shell exits `0` locally and `1` in CI. Feature 04 defines the full domain contracts below and replaces `ScanShellReport` with `Pick<ScanReport, "gatePassed">` in the service and exit selector. Full report assembly remains a later feature; the selector will accept a complete report without changing its narrow dependency.
+Feature 03 registers `ScanCommand` alongside the root provider. `CommandsModule` imports `ScanModule`, which exports `ScanService`. The command rejects positional arguments explicitly, normalizes its boolean `--ci` option, awaits the service, and selects the completed-command exit through `selectExitCode`. The temporary service returns only `{ gatePassed: false }`, with no discovery, scanners, or output: the shell exits `0` locally and `1` in CI. Feature 04 defines the full domain contracts below and replaces `ScanShellReport` with `Pick<ScanReport, "gatePassed">` in the service and exit selector. Feature 12 replaced the temporary result: `scan()` now returns a complete `ScanReport`, which the selector accepts without changing its narrow dependency.
 
 ---
 
@@ -301,7 +301,7 @@ const scannerRegistryProvider = {
 
 The array order is product behavior. Do not sort scanners alphabetically or discover them dynamically in v0.1.
 
-Feature 11 defines the shared symbol in `src/scanners/scanner.tokens.ts`. The private `FactoryProvider<Scanner[]>` in `ScannersModule` reuses the four existing singleton providers and exports the token alongside the concrete scanners. `ScanModule` imports `ScannersModule`, making the registry available for Feature 12 orchestration. `ScanService` still performs discovery and returns its temporary failed-gate result; it does not inject or execute scanners yet. Constructing the module graph performs no scanner checks or target-project file/process operations.
+Feature 11 defines the shared symbol in `src/scanners/scanner.tokens.ts`. The private `FactoryProvider<Scanner[]>` in `ScannersModule` reuses the four existing singleton providers and exports the token alongside the concrete scanners. `ScanModule` imports `ScannersModule`, and Feature 12's `ScanService` injects the registry. Constructing the module graph performs no scanner checks or target-project file/process operations.
 
 ---
 
@@ -330,6 +330,15 @@ $ shipcheck scan [--ci]
 ```
 
 Scanners run sequentially in v0.1. This produces deterministic progress output and avoids running build and test commands against the same repository at the same time.
+
+Feature 12 implements this flow in `ScanService.scan()`. `ScanModule` imports `InfrastructureModule`, `ScannersModule`, `ScoringModule` and `ReporterModule`. The service injects `FileSystem`, the `SCANNERS` registry, `Clock`, `ScoringService` and `TerminalReporter`, and works as follows:
+
+- It reads the scan start time, then discovers the project once and passes the same context object to every scanner.
+- It awaits each registry entry in order inside a `for…of` loop. Progress starts before each scanner and always stops in `finally`.
+- A returned result is kept unchanged, whatever its status. An unexpected throw becomes that scanner's own safe result: its ID, name and weight, `status: "error"`, `summary: "Scanner could not complete"`, empty details and its measured duration. The thrown value is never copied, logged or retained, and the loop continues.
+- Scoring runs exactly once after every scanner settles. Report duration covers discovery, scanning and scoring, but not rendering.
+- The service awaits `report()` once, then returns the identical report object. The command selects the exit only after rendering finishes.
+- Discovery, progress, scoring, reporting and Clock failures are not scanner results. They propagate to bootstrap, which prints the safe fatal message and exits `2`; no partial report or gate is returned.
 
 ---
 
@@ -382,7 +391,7 @@ Rules:
 
 Feature 05 distinguishes ordinary numeric exits from operational failures. Timeouts return `timedOut: true` with synthetic exit code 1; missing executables/cwd and start failures throw ProcessStartError. Output limits, invalid requests, signals, and unexpected adapter failures throw ProcessExecutionError. Inspect failure flags before numeric exits, since a buffer-limit failure may have exit code 0. Windows executable lookup happens through FileSystem before Execa to prevent its missing-command shell fallback from masquerading as exit 1. App Execution Aliases that deny metadata access and arbitrary shebang/batch launchers are unsupported and fail safely.
 
-InfrastructureModule exports ProcessRunner, FileSystem, and Clock without starting another context or connecting them to the temporary scan shell. FileSystem reads UTF-8 text, checks existence (only ENOENT means false), and resolves Windows executable files; Clock uses monotonic performance.now(). Descendant termination is best-effort through Execa and is not a sandbox guarantee.
+InfrastructureModule exports ProcessRunner, FileSystem, and Clock without starting another context. FileSystem reads UTF-8 text, checks existence (only ENOENT means false), and resolves Windows executable files; Clock uses monotonic performance.now(). Descendant termination is best-effort through Execa and is not a sandbox guarantee.
 
 ---
 
@@ -471,9 +480,9 @@ The release gate passes only for `READY`.
 
 ## Terminal Reporter — Feature 14
 
-`ReporterModule` exports the singleton `TerminalReporter` and remains outside `ScanModule` until Feature 12. Its injected output/capability/version tokens isolate stdout/stderr writers, Ora's stdout stream, TTY/NO_COLOR/test-mode policy, and the existing package-relative version loader. Construction is silent and reads no target project. Only the reporter service imports Chalk/Ora; no third-party presentation types enter the domain or orchestration API.
+`ReporterModule` exports the singleton `TerminalReporter`; `ScanModule` imports it (Feature 12). Its injected output/capability/version tokens isolate stdout/stderr writers, Ora's stdout stream, TTY/NO_COLOR/test-mode policy, and the existing package-relative version loader. Construction is silent and reads no target project. Only the reporter service imports Chalk/Ora; no third-party presentation types enter the domain or orchestration API.
 
-`startScanner(id, { ci }): void` clears previous progress and optionally starts one local spinner. `stopScanner(): void` is idempotent and also runs on module destruction. `report(report, { ci }): Promise<void>` clears progress, formats the supplied ordered report and awaits one stdout write. Write/cleanup errors propagate; the reporter never selects exits or catches errors as scanner failures. Feature 12 must await reporting before returning to ScanCommand.
+`startScanner(id, { ci }): void` clears previous progress and optionally starts one local spinner. `stopScanner(): void` is idempotent and also runs on module destruction. `report(report, { ci }): Promise<void>` clears progress, formats the supplied ordered report and awaits one stdout write. Write/cleanup errors propagate; the reporter never selects exits or catches errors as scanner failures. `ScanService` awaits reporting before returning to ScanCommand.
 
 Canonical ID-based names, symbols, labels and spacing are reporter-owned. Errors count with failed checks, and supplied score/status/gate remain scoring's responsibility. Only failed Environment details are displayed: five missing names plus an overflow indicator, with each plain detail line capped at 160 Unicode code points including prefix/ellipsis. Display fields lose terminal escape sequences and replace remaining controls with spaces before styling. This does not redact arbitrary secrets from allowed text; scanners must continue returning safe summaries and names only. Optional durations are omitted. See the output tokens/rules for exact rendering.
 

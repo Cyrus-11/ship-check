@@ -8,6 +8,7 @@ import { SCAN_ORDER } from "../../../src/common/constants/scan-order.js";
 import { SCANNER_WEIGHTS } from "../../../src/common/constants/scoring.js";
 import { FileSystem } from "../../../src/infrastructure/file-system.service.js";
 import { ProcessRunner } from "../../../src/infrastructure/process-runner.service.js";
+import { REPORTER_VERSION } from "../../../src/reporter/reporter.tokens.js";
 import { ScanModule } from "../../../src/scan/scan.module.js";
 import { ScanService } from "../../../src/scan/scan.service.js";
 import { BuildScanner } from "../../../src/scanners/build/build.scanner.js";
@@ -30,7 +31,8 @@ describe("scanner registry", (): void => {
   let scanners: Scanner[];
 
   beforeEach(async (): Promise<void> => {
-    moduleRef = await Test.createTestingModule({ imports: [ScanModule] }).compile();
+    moduleRef = await Test.createTestingModule({ imports: [ScanModule] })
+      .overrideProvider(REPORTER_VERSION).useValue("0.0.0-test").compile();
     scanners = moduleRef.get<Scanner[]>(SCANNERS);
   });
 
@@ -92,7 +94,8 @@ describe("scanner registry module boundaries", (): void => {
       vi.spyOn(FileSystem.prototype, "resolveWindowsExecutable").mockImplementation(unexpected),
     ];
     try {
-      const moduleRef = await Test.createTestingModule({ imports: [ScanModule] }).compile();
+      const moduleRef = await Test.createTestingModule({ imports: [ScanModule] })
+        .overrideProvider(REPORTER_VERSION).useValue("0.0.0-test").compile();
       try {
         expect(moduleRef.get<Scanner[]>(SCANNERS)).toHaveLength(4);
       } finally {

@@ -12,11 +12,27 @@ Update this file after every completed feature. Any engineer or AI agent reading
 
 **In progress:** None
 
-**Last completed:** 14 Terminal Reporter
+**Last completed:** 12 Scan Orchestration
 
-**Next:** 12 Scan Orchestration
+**Next:** 15 CI Exit Enforcement
 
 **Blockers:** None
+
+**Feature 12 — 2026-10-01:** Activated the real scan pipeline. `ScanService` injects FileSystem, the `SCANNERS` registry, Clock, ScoringService and TerminalReporter, and `ScanModule` imports the scoring and reporter modules. The service:
+- discovers the project once and awaits each scanner in registry order, wrapping each one in a balanced progress start/stop;
+- turns an unexpected scanner throw into that scanner's own safe `error` result (`Scanner could not complete`, empty details, measured duration) and keeps going;
+- scores once, awaits one rendered report, and returns that same `ScanReport`.
+
+Discovery, progress, scoring, reporting and Clock failures remain fatal (exit `2`). Tests no longer scan Shipcheck's own repository: the command probe returns controlled reports, and unprobed scans use isolated temporary projects with Git ceiling isolation. Compiled Nest test modules override `REPORTER_VERSION`.
+
+Verification:
+- Production/test compilation, 77 focused checks and the full 336 tests across 28 files passed. `git diff --check` passed.
+- A production-DI probe verified sequential controlled execution, report identity and clean streams.
+- Manual compiled-CLI runs on a scratch project with real Git/npm verified dirty, READY and missing-environment reports with correct local/CI exits, no leaked values and an unchanged tree. A PTY run verified spinner cleanup.
+- Scoped review found one hardening item: copy score/status/gate explicitly. It was applied. The scanner registry entry was updated.
+- Verified on macOS / Node 24.21.0 only. Windows, minimum Node 22.12, representative fixtures (Feature 16) and installed packaging (Feature 17) remain pending.
+
+**Feature 12 planning recheck — 2026-10-01:** Rechecked the 2026-09-28 plan against clean `main` at `c55c741`, after Feature 14 was committed (`598bf99`) and pushed. The implemented scoring and reporter contracts match the plan without change, and no decision or dependency is needed. Recorded in `build-plan.md` the concrete tests that would recursively scan Shipcheck's own repository once orchestration activates, and their replacements: controlled probe reports, isolated temporary projects and one Git-ceiling-isolated minimal-project smoke run. Also recorded the stale temporary-shell documentation to correct. Scanner registry remains accurate. No implementation, build or tests were run.
 
 **Feature 14 — 2026-10-01:** Implemented `TerminalReporter` and exported it through `ReporterModule`, with injected output/capability/version tokens, reporter-owned constants, awaited stream writes, semantic Chalk styling and local Ora progress. Reports preserve registry order, use canonical names/labels, count errors with failures, and render only failed Environment details (five names plus overflow; 160-code-point lines). Display controls are sanitized; scanner data is not mutated. Progress is cleared before reporting, between scanners and at Nest module destruction; CI/non-TTY/NO_COLOR/test mode suppress animation. Chalk 4.1.2 and Ora 5.4.1 were promoted from locked transitive dependencies to exact direct dependencies without package version or engine changes. All 47 focused reporter checks and the complete 322 tests across 27 files passed, including production/test compilation and native production-module probes. Manual PTY checks passed for local animation/style, final-report and shutdown cleanup, plain CI, empty NO_COLOR and 80-column output. Scoped review found no actionable findings; scanner registry remains accurate. Verified on macOS / Node 24.21.0; reporter behavior on Windows and minimum Node 22.12 remains unverified. ReporterModule is intentionally not imported into ScanModule until Feature 12. This record precedes the user-requested Feature 14 commit/push; check Git history/status for the resulting revision.
 
@@ -72,7 +88,7 @@ Update this file after every completed feature. Any engineer or AI agent reading
 
 ### Phase 4 — Orchestration and Reporting
 
-- [ ] 12 Scan Orchestration
+- [x] 12 Scan Orchestration
 - [x] 13 Scoring Service
 - [x] 14 Terminal Reporter
 - [ ] 15 CI Exit Enforcement
@@ -100,15 +116,15 @@ Update this file after every completed feature. Any engineer or AI agent reading
 
 | Gate                       | Status      | Last verified |
 | -------------------------- | ----------- | ------------- |
-| TypeScript build           | Passed production/test compilation including reporter | 2026-10-01 |
-| Unit tests                 | Passed in full 322-test suite; 47 new reporter checks across unit/integration | 2026-10-01 |
-| Integration tests          | Passed including native production reporter probe; full scan fixtures pending | 2026-10-01 |
+| TypeScript build           | Passed production/test compilation including orchestration | 2026-10-01 |
+| Unit tests                 | Passed in full 336-test suite; orchestration unit cases added | 2026-10-01 |
+| Integration tests          | Passed including production-DI orchestration probe and minimal-project compiled scan; representative fixtures pending (Feature 16) | 2026-10-01 |
 | Help/version smoke test    | Root/scan help and version passed; invalid usage returns 2 | 2026-09-21 |
-| Local scan smoke test      | Valid target discovered, shell exit 0; real pipeline pending | 2026-09-22 |
-| CI exit-code smoke test    | Valid target shell exit 1 passed; discovery failures exit 2; real report enforcement pending | 2026-09-22 |
+| Local scan smoke test      | Real report and exit 0 for minimal (automated) and scratch npm/Git projects (manual) | 2026-10-01 |
+| CI exit-code smoke test    | READY exit 0, REVIEW/NOT READY exit 1, discovery failures exit 2; full matrix is Feature 15 | 2026-10-01 |
 | Package dry run            | Not started | —             |
-| Secret-leak negative check | Passed prior checks plus reporter detail allowlist/extra-field sentinels and terminal-control safety; complete pipeline leakage checks pending | 2026-10-01 |
-| Shipcheck-owned mutation check | Passed for help/version, scan shell, discovery, GitScanner, and EnvScanner (fixture files and environment unchanged); Build/Test execute repository-owned scripts that may have side effects; full scan checks pending | 2026-09-26 |
+| Secret-leak negative check | Passed prior checks plus reporter detail allowlist/extra-field sentinels and terminal-control safety; orchestration throw sentinels absent from results/report/streams; manual missing-environment scan printed names only | 2026-10-01 |
+| Shipcheck-owned mutation check | Passed for help/version, discovery, scanners, and full minimal-project scans (files unchanged); Build/Test execute repository-owned scripts that may have side effects | 2026-10-01 |
 
 ---
 
@@ -133,6 +149,13 @@ Update this file after every completed feature. Any engineer or AI agent reading
 - Shipcheck-owned operations never modify the scanned repository; repository-owned build/test scripts may generate files or perform other side effects
 
 Add implementation-time decisions below this line with date, reason, and affected files.
+
+### Feature 12 implementation and verification — 2026-10-01
+
+- Followed the recorded plan and its 2026-10-01 recheck. The deviation is small hardening: score/status/gate are copied explicitly instead of spreading the scoring projection.
+- Adding `ReporterModule` to `ScanModule` caused compiled Nest test modules (`scanners.module`, `scan.command`, `scaffold` specs) to fail. The package-relative version loader cannot resolve `package.json` from `.test-dist`. Those tests now override `REPORTER_VERSION`, matching the reporter's own tests. The production loader is unchanged and native probes still exercise it.
+- Never run an unprobed `shipcheck scan` from Shipcheck's own repository in tests: it would execute this suite recursively. `scan-command.integration.spec.ts` enforces this with `withMinimalProject`, and `scan-probe.ts` never delegates to the real `scan()`.
+- Limits: macOS / Node 24.21.0 only. The full exit matrix (15), representative fixtures (16) and installed packaging (17) remain.
 
 ### Feature 14 implementation and verification — 2026-10-01
 
@@ -336,6 +359,21 @@ Known blocker:
 ```
 
 ### Latest Handoff
+
+```text
+Date: 2026-10-01
+Completed feature: 12 Scan Orchestration
+Files changed: src/scan/scan.service.ts, src/scan/scan.module.ts, test/unit/scan/scan.service.spec.ts, test/unit/commands/scan.command.spec.ts, test/unit/scanners/scanners.module.spec.ts, test/unit/scaffold.spec.ts, test/helpers/scan-probe.ts, test/helpers/scan-orchestration-probe.ts (new), test/integration/scan-command.integration.spec.ts, test/integration/scan-orchestration.integration.spec.ts (new), README.md, context architecture/output-rules/library/registry/build-plan/tracker documents
+Tests run and results: production/test compilation passed; 77 focused checks across 7 files passed; NO_COLOR=1 npm test -- --maxWorkers=4 passed all 336 tests across 28 files; git diff --check passed
+Manual verification: compiled CLI on a scratch npm/Git project — dirty tree (local 0, CI 1), clean READY (CI 0), missing environment names (CI 1, names only, empty stderr, tree unchanged); PTY run showed per-scanner spinners cleared before the colored report
+Review: one hardening finding (explicit score/status/gate copy) applied; scanner registry entry updated
+Verification limits: macOS / Node 24.21.0; Windows/minimum Node, full exit matrix, representative fixtures and installed packaging remain pending
+Decision or deviation recorded: compiled Nest test modules override REPORTER_VERSION; tests never scan Shipcheck's own repository
+Next feature: 15 CI Exit Enforcement
+Known blocker: None. Not committed
+```
+
+### Previous Handoff — Feature 14
 
 ```text
 Date: 2026-10-01

@@ -1,6 +1,6 @@
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 import { execa } from "execa";
 import { describe, expect, it } from "vitest";
@@ -19,6 +19,31 @@ const scanHelp = "Usage: shipcheck scan [options]\n\n" +
   "Run release-readiness checks\n\nOptions:\n" +
   "  --ci        Enforce the release gate through process exit codes\n" +
   "  -h, --help  display help for command\n";
+const minimalManifest = '{ "name": "test-only-project" }';
+
+// No-script projects never execute repository code; Git reports a non-repository.
+async function minimalReport(directory: string): Promise<string> {
+  const { version } = JSON.parse(await readFile("package.json", "utf8")) as { version: string };
+  return `Shipcheck v${version}\n\nProject: test-only-project\nPath: ${await realpath(directory)}\n\n` +
+    "✗ Git          Not a Git repository\n" +
+    "✗ Build        package.json has no build script\n" +
+    "✗ Tests        package.json has no test script\n" +
+    "○ Environment  No .env.example found\n\n" +
+    "Checks: 0 passed, 3 failed, 1 skipped\nRelease score: 0/100\nStatus: NOT READY\nRelease gate: FAILED\n";
+}
+
+// Never run an unprobed scan from this repository: it would execute Shipcheck's own tests.
+async function withMinimalProject(use: (directory: string) => Promise<void>): Promise<void> {
+  const directory = await mkdtemp(join(tmpdir(), "shipcheck-scan-"));
+  try {
+    await writeFile(join(directory, "package.json"), minimalManifest, "utf8");
+    await use(directory);
+    expect(await readdir(directory)).toEqual(["package.json"]);
+    expect(await readFile(join(directory, "package.json"), "utf8")).toBe(minimalManifest);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
 
 async function runCli(args: string[], options: ProbeOptions = {}): Promise<CliResult> {
   const preload = ["--import", new URL("../helpers/reject-network-listen.js", import.meta.url).href];
@@ -35,6 +60,10 @@ async function runCli(args: string[], options: ProbeOptions = {}): Promise<CliRe
       CI: options.ci,
       SHIPCHECK_SCAN_PROBE: options.scan,
       SHIPCHECK_TEST_PROBE: options.lifecycle,
+      // Keep an enclosing repository or inherited Git location from changing the Git check.
+      GIT_CEILING_DIRECTORIES: dirname(await realpath(options.cwd ?? process.cwd())),
+      GIT_DIR: undefined,
+      GIT_WORK_TREE: undefined,
     },
     timeout: 10_000,
     maxBuffer: 1_000_000,
@@ -46,13 +75,25 @@ async function runCli(args: string[], options: ProbeOptions = {}): Promise<CliRe
   return { stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode };
 }
 
-describe("compiled scan command shell", (): void => {
+describe("compiled scan command", (): void => {
   it.each([
     { args: ["scan"], code: 0 },
     { args: ["scan", "--ci"], code: 1 },
-  ])("runs the temporary shell for $args", async ({ args, code }): Promise<void> => {
-    expect(await runCli(args)).toEqual({ stdout: "", stderr: "", exitCode: code });
-  }, 15_000);
+  ])("scans a minimal project, reports once, and exits $code for $args", async ({ args, code }): Promise<void> => {
+    await withMinimalProject(async (directory): Promise<void> => {
+      expect(await runCli(args, { cwd: directory })).toEqual({
+        stdout: await minimalReport(directory), stderr: "", exitCode: code,
+      });
+    });
+  }, 30_000);
+
+  it("completes both the report and application cleanup with the CI gate exit", async (): Promise<void> => {
+    await withMinimalProject(async (directory): Promise<void> => {
+      expect(await runCli(["scan", "--ci"], { cwd: directory, lifecycle: "lifecycle" })).toEqual({
+        stdout: await minimalReport(directory), stderr: cleanup, exitCode: 1,
+      });
+    });
+  }, 30_000);
 
   it.each([
     { args: ["scan"], ci: false, mode: "observe", code: 0 },
@@ -108,14 +149,16 @@ describe("compiled scan command shell", (): void => {
   }, 15_000);
 
   it.each([
-    { args: ["scan"], stdout: "" },
-    { args: ["scan", "--ci"], stdout: "" },
-    { args: ["scan", "--help"], stdout: scanHelp },
-  ])("cleanup failure overrides the result of $args", async ({ args, stdout }): Promise<void> => {
-    expect(await runCli(args, { lifecycle: "cleanup" })).toEqual({
-      stdout, stderr: cleanup + fatalError, exitCode: 2,
+    { args: ["scan"], report: true },
+    { args: ["scan", "--ci"], report: true },
+    { args: ["scan", "--help"], report: false },
+  ])("cleanup failure overrides the result of $args", async ({ args, report }): Promise<void> => {
+    await withMinimalProject(async (directory): Promise<void> => {
+      expect(await runCli(args, { cwd: directory, lifecycle: "cleanup" })).toEqual({
+        stdout: report ? await minimalReport(directory) : scanHelp, stderr: cleanup + fatalError, exitCode: 2,
+      });
     });
-  }, 15_000);
+  }, 30_000);
 
   it("reports a missing package.json as a fatal discovery error and mutates nothing", async (): Promise<void> => {
     const directory = await mkdtemp(join(tmpdir(), "shipcheck-discovery-"));
@@ -140,18 +183,9 @@ describe("compiled scan command shell", (): void => {
     }
   }, 30_000);
 
-  it("discovers a valid project, runs the shell, and mutates nothing", async (): Promise<void> => {
-    const directory = await mkdtemp(join(tmpdir(), "shipcheck-discovery-"));
-    try {
-      const manifest = '{ "name": "test-only-project" }';
-      await writeFile(join(directory, "package.json"), manifest, "utf8");
-      expect(await runCli(["scan"], { cwd: directory })).toEqual({ stdout: "", stderr: "", exitCode: 0 });
-      expect(await runCli(["scan", "--ci"], { cwd: directory })).toEqual({ stdout: "", stderr: "", exitCode: 1 });
+  it("shows scan help from a valid project without scanning it", async (): Promise<void> => {
+    await withMinimalProject(async (directory): Promise<void> => {
       expect(await runCli(["scan", "--help"], { cwd: directory })).toEqual({ stdout: scanHelp, stderr: "", exitCode: 0 });
-      expect(await readdir(directory)).toEqual(["package.json"]);
-      expect(await readFile(join(directory, "package.json"), "utf8")).toBe(manifest);
-    } finally {
-      await rm(directory, { recursive: true, force: true });
-    }
+    });
   }, 30_000);
 });

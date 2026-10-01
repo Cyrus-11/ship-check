@@ -227,7 +227,7 @@ CI mode does not:
 
 ## Help Output
 
-Implementation sequencing: feature 02 supplied product help and version. Feature 03 registers `scan`, adds its help entry and `--ci`, and completes the help surface below. This sequencing adjustment was approved on 2026-09-20. The temporary scan shell produces no report and evaluates no checks; its local/CI exits are `0`/`1` until the pipeline is implemented. Completed-scan output rules apply once reporting is connected.
+Implementation sequencing: feature 02 supplied product help and version. Feature 03 registers `scan`, adds its help entry and `--ci`, and completes the help surface below. This sequencing adjustment was approved on 2026-09-20. Feature 12 replaced the temporary scan shell with the real pipeline. Every completed scan renders one report under the completed-scan output rules.
 
 Help must communicate only the v0.1 surface:
 
