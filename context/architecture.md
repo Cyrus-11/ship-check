@@ -469,6 +469,14 @@ The release gate passes only for `READY`.
 
 ---
 
+## Terminal Reporter — Feature 14
+
+`ReporterModule` exports the singleton `TerminalReporter` and remains outside `ScanModule` until Feature 12. Its injected output/capability/version tokens isolate stdout/stderr writers, Ora's stdout stream, TTY/NO_COLOR/test-mode policy, and the existing package-relative version loader. Construction is silent and reads no target project. Only the reporter service imports Chalk/Ora; no third-party presentation types enter the domain or orchestration API.
+
+`startScanner(id, { ci }): void` clears previous progress and optionally starts one local spinner. `stopScanner(): void` is idempotent and also runs on module destruction. `report(report, { ci }): Promise<void>` clears progress, formats the supplied ordered report and awaits one stdout write. Write/cleanup errors propagate; the reporter never selects exits or catches errors as scanner failures. Feature 12 must await reporting before returning to ScanCommand.
+
+Canonical ID-based names, symbols, labels and spacing are reporter-owned. Errors count with failed checks, and supplied score/status/gate remain scoring's responsibility. Only failed Environment details are displayed: five missing names plus an overflow indicator, with each plain detail line capped at 160 Unicode code points including prefix/ellipsis. Display fields lose terminal escape sequences and replace remaining controls with spaces before styling. This does not redact arbitrary secrets from allowed text; scanners must continue returning safe summaries and names only. Optional durations are omitted. See the output tokens/rules for exact rendering.
+
 ## Exit Codes
 
 | Code | Meaning                                                                 |

@@ -12,11 +12,15 @@ Update this file after every completed feature. Any engineer or AI agent reading
 
 **In progress:** None
 
-**Last completed:** 13 Scoring Service
+**Last completed:** 14 Terminal Reporter
 
-**Next:** 14 Terminal Reporter
+**Next:** 12 Scan Orchestration
 
 **Blockers:** None
+
+**Feature 14 — 2026-10-01:** Implemented `TerminalReporter` and exported it through `ReporterModule`, with injected output/capability/version tokens, reporter-owned constants, awaited stream writes, semantic Chalk styling and local Ora progress. Reports preserve registry order, use canonical names/labels, count errors with failures, and render only failed Environment details (five names plus overflow; 160-code-point lines). Display controls are sanitized; scanner data is not mutated. Progress is cleared before reporting, between scanners and at Nest module destruction; CI/non-TTY/NO_COLOR/test mode suppress animation. Chalk 4.1.2 and Ora 5.4.1 were promoted from locked transitive dependencies to exact direct dependencies without package version or engine changes. All 47 focused reporter checks and the complete 322 tests across 27 files passed, including production/test compilation and native production-module probes. Manual PTY checks passed for local animation/style, final-report and shutdown cleanup, plain CI, empty NO_COLOR and 80-column output. Scoped review found no actionable findings; scanner registry remains accurate. Verified on macOS / Node 24.21.0; reporter behavior on Windows and minimum Node 22.12 remains unverified. ReporterModule is intentionally not imported into ScanModule until Feature 12. This record precedes the user-requested Feature 14 commit/push; check Git history/status for the resulting revision.
+
+**Feature 14 planning — 2026-10-01:** Architecture plan recorded in `build-plan.md` against clean `main` at `4d92209`. Covers reporter DI/writers/capabilities, canonical output and safe detail limits, isolated Chalk styling, Ora cleanup, native production verification and failure cases. Chalk 4.1.2 and Ora 5.4.1 already exist transitively; the plan proposes declaring those exact versions directly, with no engine change. `report()` will return `Promise<void>` and Feature 12's plan now explicitly awaits it before returning to the command. Documented formatting interpretations for spacing, canonical casing, five names plus overflow, and optional duration omission. Scanner registry remains accurate; no scanner changes. No implementation, dependency installation, build or tests performed. Feature 14 remains next; no blocking decision.
 
 **Local macOS setup — 2026-09-30:** Installed the existing lockfile with `npm ci` on Node 24.21.0 / npm 11.19.0 after granting registry network access. No dependency versions changed. Initial verification passed 274/275 tests; the Windows environment-merge unit test incorrectly mocked executable lookup with the host's `process.execPath`, which lacks `.exe` on macOS. Changed only the lookup mock to a fixed Windows `node.exe` path. `NO_COLOR=1 npm test -- --maxWorkers=4` then passed production/test compilation and all 275 tests across 23 files. Compiled CLI `--help` and `--version` passed (0.1.0). Scanner behavior and registry status remain unchanged. Feature 14 remains next; full pipeline and installed-package verification remain pending. npm reported an unapproved optional fsevents install script; the current build/test workflow passed without approving it.
 
@@ -70,7 +74,7 @@ Update this file after every completed feature. Any engineer or AI agent reading
 
 - [ ] 12 Scan Orchestration
 - [x] 13 Scoring Service
-- [ ] 14 Terminal Reporter
+- [x] 14 Terminal Reporter
 - [ ] 15 CI Exit Enforcement
 
 ### Phase 5 — Verification and Packaging
@@ -96,14 +100,14 @@ Update this file after every completed feature. Any engineer or AI agent reading
 
 | Gate                       | Status      | Last verified |
 | -------------------------- | ----------- | ------------- |
-| TypeScript build           | Passed (production/test compilation, domain contract checks, scanners and registry) | 2026-09-27 |
-| Unit tests                 | Passed (prior checks plus six registry DI/invariant checks) | 2026-09-27 |
-| Integration tests          | Passed (prior checks plus native production registry probe); full scan fixtures pending | 2026-09-27 |
+| TypeScript build           | Passed production/test compilation including reporter | 2026-10-01 |
+| Unit tests                 | Passed in full 322-test suite; 47 new reporter checks across unit/integration | 2026-10-01 |
+| Integration tests          | Passed including native production reporter probe; full scan fixtures pending | 2026-10-01 |
 | Help/version smoke test    | Root/scan help and version passed; invalid usage returns 2 | 2026-09-21 |
 | Local scan smoke test      | Valid target discovered, shell exit 0; real pipeline pending | 2026-09-22 |
 | CI exit-code smoke test    | Valid target shell exit 1 passed; discovery failures exit 2; real report enforcement pending | 2026-09-22 |
 | Package dry run            | Not started | —             |
-| Secret-leak negative check | Passed for bootstrap, scan shell, discovery, and all four scanners; Environment sentinel values absent from results/native probe output; full report checks pending | 2026-09-26 |
+| Secret-leak negative check | Passed prior checks plus reporter detail allowlist/extra-field sentinels and terminal-control safety; complete pipeline leakage checks pending | 2026-10-01 |
 | Shipcheck-owned mutation check | Passed for help/version, scan shell, discovery, GitScanner, and EnvScanner (fixture files and environment unchanged); Build/Test execute repository-owned scripts that may have side effects; full scan checks pending | 2026-09-26 |
 
 ---
@@ -129,6 +133,15 @@ Update this file after every completed feature. Any engineer or AI agent reading
 - Shipcheck-owned operations never modify the scanned repository; repository-owned build/test scripts may generate files or perform other side effects
 
 Add implementation-time decisions below this line with date, reason, and affected files.
+
+### Feature 14 implementation and verification — 2026-10-01
+
+- Followed the recorded plan; the extra `write-output.ts` helper isolates stream callback/error-event ordering for focused tests. It waits through backpressure, keeps an error listener through a failed write's event turn, removes its listener and never closes process streams. Writer failure rejects reporting, leaving the future command boundary responsible for safe fatal output.
+- Output tokens/rules now resolve the documented ambiguities: literal 12-character name column plus one separator, canonical lowercase command summaries, five missing names plus overflow, 160 Unicode code points including detail prefix/ellipsis, and no optional duration suffix. Reporters trust safe scanner summaries; control stripping is not arbitrary-secret redaction. No scanner or scoring behavior changed.
+- Dependency installation initially could not use offline registry metadata (`ENOTCACHED` for Ora); an approved network/cache-enabled npm install succeeded. Only root direct dependency declarations changed in the lockfile; installed package versions stayed unchanged. Install scripts were disabled.
+- Initial test compilation rejected the test-only `Promise.withResolvers` call under the existing ES2022 library target. Replaced it with a typed deferred Promise; no compiler/runtime baseline change. The subsequent targeted run passed all 47 checks. `NO_COLOR=1 npm test -- --maxWorkers=4` passed compilation and 322 tests in 27 files (11.19s test execution). `git diff --check` passed.
+- Scoped review covered plan alignment, Nest export visibility, ESM imports, state/cleanup, formatting, trust boundaries, callback/error ordering, snapshots, dependency diff and unchanged CLI/scanner behavior. No actionable findings within scope. Manual native PTY probes exercised real Ora; automated tests use fakes for animation and real streams for writer failures.
+- Limits: macOS / Node 24.21.0 only for this feature; minimum Node, Windows, full pipeline, command report-before-exit integration and installed packaging remain pending. Next is Feature 12, which must await `report()` before returning to ScanCommand.
 
 ### Documentation Cleanup — 2026-09-20
 
@@ -323,6 +336,21 @@ Known blocker:
 ```
 
 ### Latest Handoff
+
+```text
+Date: 2026-10-01
+Completed feature: 14 Terminal Reporter
+Files changed: src/reporter/*, reporter unit/integration tests and helpers, test/fixtures/reporter/*.txt, package.json, package-lock.json, context architecture/output/library/build-plan/tracker documents
+Tests run and results: production/test compilation passed; 47 focused reporter checks passed; NO_COLOR=1 npm test -- --maxWorkers=4 passed all 322 tests across 27 files; git diff --check passed
+Manual verification: native ESM imports; real PTY local progress/style and cleanup before report/on module close; plain CI and empty NO_COLOR; 80-column output. Native production probes render from unrelated cwd with separate stdout/stderr assertions
+Review: no actionable findings within scope; scanner registry verified unchanged and accurate
+Verification limits: macOS / Node 24.21.0; Windows/minimum Node, full pipeline, command report-before-exit verification and installed packaging remain pending
+Decision or deviation recorded: implemented planned reporter API with awaited report(), exact direct Chalk/Ora versions, isolated stream writer helper, documented formatting interpretations. ReporterModule remains outside ScanModule until Feature 12
+Next feature: 12 Scan Orchestration
+Known blocker: None; this handoff precedes the requested commit/push. Check Git history/status for the resulting revision
+```
+
+### Previous Handoff — Feature 13
 
 ```text
 Date: 2026-09-28

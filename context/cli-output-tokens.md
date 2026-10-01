@@ -48,7 +48,7 @@ Do not use background colors, 256-color codes, RGB values, gradients, blinking t
 | ------------- | ------ | --------- | ---------------------------------------- |
 | `passed`      | `✓`    | success   | `✓ Build        npm run build passed`    |
 | `failed`      | `✗`    | error     | `✗ Tests        npm test failed`         |
-| `skipped`     | `○`    | warning   | `○ Environment No .env.example found`    |
+| `skipped`     | `○`    | warning   | `○ Environment  No .env.example found`    |
 | `error`       | `!`    | error     | `! Git          Could not execute Git`   |
 
 Symbols are always followed by one space. Status is never communicated by color alone.
@@ -82,7 +82,7 @@ The reporter must use these labels exactly. Stable wording makes snapshots, docu
 | `test`     | `Tests`       |           12 |
 | `env`      | `Environment` |           12 |
 
-Use `padEnd(12)` for scanner names. Do not align output by adding tabs because tab width differs between terminals.
+Use `padEnd(12)` for scanner names, followed by one separator space before the summary. The literal formula controls alignment; Environment therefore has two spaces after its name. Do not align output by adding tabs because tab width differs between terminals.
 
 ---
 
@@ -95,16 +95,16 @@ Use `padEnd(12)` for scanner names. Do not align output by adding tabs because t
 | `resultsGapLines`        |     1 | Blank line after scanner rows         |
 | `scannerNameWidth`       |    12 | Fixed name column                     |
 | `detailIndentSpaces`     |     2 | Indentation for optional detail lines |
-| `maxVisibleDetails`      |     5 | Maximum detail lines per result       |
-| `maxDetailLength`        |   160 | Maximum characters per detail line    |
+| `maxVisibleDetails`      |     5 | Maximum missing-name items per result       |
+| `maxDetailLength`        |   160 | Maximum Unicode code points per detail line    |
 
-Long detail text is truncated with `…`. Full captured build or test output is never printed in v0.1.
+Long detail text is truncated with `…`. The 160-code-point limit includes the four-character `  - ` prefix and ellipsis, before styling; do not split surrogate pairs. Five missing names may be followed by one additional overflow indicator. Full captured build or test output is never printed in v0.1.
 
 ---
 
 ## Duration Tokens
 
-Durations are secondary information and shown in muted text only when useful.
+Durations are secondary information and shown in muted text only when useful. Feature 14 omits optional duration suffixes; duration fields remain in the report data.
 
 ```text
 under 1 second   → 342ms
@@ -202,7 +202,7 @@ Path: /workspace/xpress-api
 ✓ Git          Working tree is clean (main)
 ✓ Build        npm run build passed
 ✓ Tests        npm test passed
-✓ Environment 8 required variables are present
+✓ Environment  8 required variables are present
 
 Checks: 4 passed, 0 failed, 0 skipped
 Release score: 100/100
@@ -221,7 +221,7 @@ Path: /workspace/xpress-api
 ✓ Git          Working tree is clean (main)
 ✓ Build        npm run build passed
 ✗ Tests        npm test failed
-✓ Environment 8 required variables are present
+✓ Environment  8 required variables are present
 
 Checks: 3 passed, 1 failed, 0 skipped
 Release score: 75/100
@@ -240,7 +240,7 @@ Path: /workspace/worker-service
 ✓ Git          Working tree is clean (main)
 ✓ Build        npm run build passed
 ✓ Tests        npm test passed
-○ Environment No .env.example found
+○ Environment  No .env.example found
 
 Checks: 3 passed, 0 failed, 1 skipped
 Release score: 100/100

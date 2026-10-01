@@ -664,7 +664,7 @@ This feature connects existing components. It does not change scanner algorithms
 **Prerequisite contracts supplied by Features 13 and 14:**
 
 - `ScoringService.calculate(results)` returns `Pick<ScanReport, "score" | "status" | "gatePassed">`. It receives completed results only and owns no project metadata, duration, output, or exit behavior.
-- `TerminalReporter.startScanner(id, { ci })` starts or no-ops the reporter-owned progress state; `stopScanner()` always clears it; `report(report, { ci })` writes one final completed report. The reporter owns all Chalk/Ora/writer/capability logic and never executes a scanner.
+- `TerminalReporter.startScanner(id, { ci }): void` starts or no-ops the reporter-owned progress state; `stopScanner(): void` always clears it; `report(report, { ci }): Promise<void>` writes one final completed report. Await reporting before returning the report (Feature 14 planning clarification, 2026-10-01). The reporter owns all Chalk/Ora/writer/capability logic and never executes a scanner.
 - `ScoringModule` and `ReporterModule` export those providers. `ScanModule` imports them with the already imported InfrastructureModule and ScannersModule. Exact method names become controlling contracts when the prerequisite feature plans are implemented; if their architecture work finds a necessary change, update this plan before Feature 12 code.
 
 **Orchestration design:**
@@ -675,7 +675,7 @@ This feature connects existing components. It does not change scanner algorithms
 4. Before each scanner, call `TerminalReporter.startScanner(scanner.id, { ci: context.ci })`; always call `stopScanner()` in `finally`. Take a separate scanner-error start reading immediately before `scanner.run()`. A normal `passed`, `failed`, `skipped`, or `error` result is appended unchanged and never stops the loop.
 5. Catch an unexpected `unknown` throw from an individual scanner and append one safe result using the registry provider's own identity and weight: `status: "error"`, `summary: "Scanner could not complete"`, `details: []`, and `durationMs: Math.round(clock.now() - scannerStart)`. Do not copy, serialize, log, or retain the caught value. This safety boundary handles programming/adapter surprises that concrete scanners intentionally rethrow; it does not relabel discovery, scoring, reporter, or Clock failures.
 6. After all results exist, call `ScoringService.calculate(results)` exactly once. Read the whole-scan end time after scoring and before rendering, so report duration includes discovery, scanner execution, progress orchestration, and scoring, but excludes final rendering because duration is already a field in the rendered report. Round the non-negative elapsed value once with `Math.round`.
-7. Assemble a complete `ScanReport` from `context.projectName`, `context.cwd`, the ordered results, calculated score/status/gate, and duration. Call `TerminalReporter.report(report, { ci: context.ci })` exactly once, then return the identical report object. `ScanCommand` awaits the service and uses its existing narrow gate selector, so output completes before `process.exitCode` is assigned.
+7. Assemble a complete `ScanReport` from `context.projectName`, `context.cwd`, the ordered results, calculated score/status/gate, and duration. Await `TerminalReporter.report(report, { ci: context.ci })` exactly once, then return the identical report object. `ScanCommand` awaits the service and uses its existing narrow gate selector, so output completes before `process.exitCode` is assigned.
 8. Let progress, scoring, final-report, and unexpected Clock failures propagate to the existing safe bootstrap boundary. Those are command failures, not scanner results. A progress failure may stop the pipeline; the continue-after-error guarantee applies to scanner outcomes and scanner throws.
 
 **Security and behavior boundaries:**
@@ -823,33 +823,82 @@ Run `npm run build` and `npm run test:compile`, then the emitted scoring unit fi
 
 Implement the complete plain and styled report.
 
-**Feature 12 prerequisite contract:** Export a TerminalReporter that supplies `startScanner(id, { ci })`, `stopScanner()`, and `report(report, { ci })`. These methods own presentation only; ScanService owns scanner execution. Under the approved Phase 4 sequence, implement this feature after Feature 13 and before Feature 12.
+**Status:** Implemented and verified on 2026-10-01, following the plan created against clean `main` at `4d92209`. Production/test compilation, 47 focused reporter checks and the complete 322-test suite across 27 files passed on macOS / Node 24.21.0. Manual PTY probes verified progress, style, cleanup, CI, NO_COLOR and 80-column output. Feature 12 is next under the approved order 13 → 14 → 12 → 15; ReporterModule is exported but not yet wired into ScanModule.
 
-**Implementation:**
+**Outcome and scope:**
 
-- Add writer abstraction for stdout/stderr
-- Add color and TTY capability abstraction
-- Render heading, metadata, ordered results, and summary
-- Add safe detail limiting/truncation
-- Apply semantic Chalk styling
-- Add local Ora progress lifecycle
-- Disable animation/color where required
+Provide one deterministic completed report and optional temporary local progress, using the canonical output tokens. Export `TerminalReporter` through `ReporterModule`. Keep the module outside `ScanModule` until Feature 12, so public scans retain their documented temporary behavior during this feature. Do not change scanner results, discovery, scoring, command exits, or public options. No new report format, interactive prompt, terminal framework, or general logging system.
 
-**Acceptance:**
+**Controlling contract and composition:**
 
-- Output matches `cli-output-rules.md`
-- Symbols and labels match `cli-output-tokens.md`
-- CI and non-TTY output contain no ANSI/spinner artifacts
-- Environment values and command output never appear
-- Long detail sets are safely summarized
+- `startScanner(id: ScannerId, options: { ci: boolean }): void` stops any previous spinner, then starts eligible progress using the ID's canonical text. It performs no scanner work and emits no permanent row.
+- `stopScanner(): void` is safe before start and after repeated stops. Stop/clear the current spinner and release its reference. Implement `OnModuleDestroy` with the same cleanup for normal Nest shutdown. No second application context or new signal-handler framework.
+- `report(report: ScanReport, options: { ci: boolean }): Promise<void>` clears progress first, assembles the whole report, and awaits one stdout writer call. It never mutates the report or selects an exit. Feature 12 must await this method; its plan above now says so explicitly.
+- Inject project-owned tokens for output and capabilities, plus the package version. Output supplies `writeStdout(text): Promise<void>`, `writeStderr(text): Promise<void>`, and the stdout stream used by Ora. Production writer functions use the stream write callback to resolve/reject; account for stream error events without leaving listeners behind or closing process streams. Unit writers capture text and can defer/reject completion. Reports never use the stderr writer.
+- Capabilities supply stdout TTY, presence of `NO_COLOR`, and a test-mode switch. Production samples stdout/environment at the adapter boundary; unit tests inject values without modifying the developer's environment. Effective color is TTY AND no `NO_COLOR` AND no `--ci`. Effective animation additionally requires test mode to be false. Ambient `CI` must not select command mode; `FORCE_COLOR` cannot override Shipcheck's disabling conditions.
+- A private async package-version provider reuses `readPackageVersion()`. Tests override it with a fixed value; the production probe exercises the real package-relative loader. No duplicated version literal, target manifest read, or bootstrap refactor. Module construction starts no spinner and writes nothing.
 
-**Tests:**
+**Dependency decision and installed evidence:**
 
-- Plain snapshots for ready, review, not-ready, skip, and error
-- Detail truncation tests
-- ANSI-enabled focused test
-- CI/non-TTY/NO_COLOR tests
-- stdout/stderr separation test
+At planning time Chalk and Ora were absent from direct dependencies but already installed and locked transitively through nest-commander: Chalk **4.1.2**, Ora **5.4.1**. Both installed manifests require Node >=10, within the existing >=22.12 baseline. These exact versions are now direct runtime dependencies, avoiding reliance on hoisting or an unrelated major upgrade. NodeNext compilation and native ESM imports of their CommonJS default exports passed. No engine or module-system change was needed.
+
+Inspected installed manifests, lock entries, Chalk declarations, Ora declarations/source, and Nest 11.2.5 factory-provider declarations. Consulted official [Chalk 4.1.2 documentation](https://github.com/chalk/chalk/blob/v4.1.2/readme.md), [Ora 5.4.1 documentation](https://github.com/sindresorhus/ora/tree/v5.4.1), and Nest [custom providers](https://docs.nestjs.com/fundamentals/custom-providers) / [lifecycle](https://docs.nestjs.com/fundamentals/lifecycle-events) documentation. No relevant library-specific installed skill or advertised documentation MCP was found; used official docs and installed APIs. The original dependency proposal was subsequently installed and verified as recorded above.
+
+- Only `terminal-reporter.service.ts` imports Chalk/Ora. Use a private `new chalk.Instance({ level: colorEnabled ? 1 : 0 })`; never mutate global Chalk state. Apply only the semantic colors after plain text assembly. Color symbols, product heading, status and gate values; dim the path and detail items. Keep primary messages unstyled.
+- Ora defaults to stderr and can print replacement text with `isEnabled: false`. Do not construct/start it at all when disabled. When enabled, explicitly pass the stdout stream, `isEnabled: true`, and `discardStdin: false`; retain default frames and cursor management. Use only start/stop, never succeed/fail/persist helpers. Unit tests replace the Ora package boundary with a fake, so lifecycle assertions create no timers or real animation.
+- Store the spinner before calling start so a partially failed start can be cleaned up. Clear before report output and shutdown; failures propagate to the command's existing fatal boundary rather than becoming scanner results. Do not serialize errors into a report.
+
+**Formatting and safety decisions:**
+
+1. Centralize symbols, labels, display names, spacing, spinner text, and detail limits in one reporter-owned constants file. Render results in the supplied registry order; do not sort, deduplicate, recalculate scores, or fabricate missing results. Feature 12 owns the complete ordered collection. Use canonical names by ID.
+2. Follow the literal row formula: symbol + one space + `name.padEnd(12)` + one space + summary. The pad width and explicit separator take precedence over inconsistent spacing in illustrative examples. Use `\n`, one blank line between prescribed sections, one final newline, and no extra blank line at the end.
+3. Preserve canonical scanner summary casing and wording, including lowercase `npm` and `package.json`; the canonical language table takes precedence over the generic uppercase-first rule. Render the supplied score/status/gate. Count errors with failed checks. Map internal `NOT_READY` to `NOT READY`.
+4. Omit optional duration suffixes in this first reporter. This preserves the canonical examples and concise output; no duration formatter or new timing line is needed. Keep the report's duration fields intact.
+5. Render details only for failed Environment results, whose contract contains sorted missing names. Ignore Git/Build/Tests detail payloads and details on other Environment statuses. Preserve name order. Show the first five names; when more exist, append `  - …and N more`. This is five data items plus one overflow indicator, following the explicit environment exception to the generic five-line rule.
+6. Limit each rendered plain detail line to 160 Unicode code points including the four-character `  - ` prefix and the final ellipsis when truncated. Do not split surrogate pairs. Apply style afterward; ANSI bytes do not count. Cases at 159/160/161 characters and five/six names must be explicit tests.
+7. Treat project name, path, summary and detail strings as display text: remove terminal escape sequences with Node's built-in `stripVTControlCharacters`, replace remaining C0/C1 controls and line separators with spaces, and then apply line limits/style. Do not abbreviate the absolute path or wrap/truncate summaries. Normal long paths may wrap at 80 columns; readability is not a hard 80-character cap. Record these presentation clarifications in the output documents during implementation before locking snapshots.
+8. The reporter accepts trusted scanner summaries, not raw process results or parsed environment maps. Control stripping is not secret detection: scanners retain responsibility for keeping values/raw output out of `ScanResult`. The reporter adds a strict details allowlist and never spreads or serializes arbitrary objects. Leakage tests use synthetic sentinel values in disallowed details/extra properties and assert their absence without promising arbitrary-secret redaction from allowed text.
+
+**Proposed affected paths:**
+
+| Path | Responsibility |
+| --- | --- |
+| `src/reporter/terminal-reporter.service.ts` (new) | Public reporter contract, formatting, style, spinner state and cleanup |
+| `src/reporter/reporter.module.ts` (new) | Explicit singleton composition, version/output/capability factories, reporter export |
+| `src/reporter/reporter.tokens.ts`, `output-tokens.ts` (new) | Injection identities and canonical presentation constants |
+| `src/reporter/reporter-output.type.ts`, `reporter-capabilities.type.ts` (new) | Project-owned test seams, no Chalk/Ora types exposed to callers |
+| `src/reporter/write-output.ts`, `test/unit/reporter/write-output.spec.ts` (new) | Callback-backed stream writes, backpressure/error ordering and listener cleanup |
+| `test/unit/reporter/terminal-reporter.service.spec.ts`, `reporter.module.spec.ts` (new) | Stable snapshots, safety, capabilities, progress, writer failures, module visibility/cleanup |
+| `test/helpers/terminal-reporter-probe.ts`, `test/integration/terminal-reporter.integration.spec.ts` (new) | Native production-module rendering, real metadata and stdout/stderr verification |
+| `package.json`, `package-lock.json` | Declare the selected exact direct dependencies |
+| Output tokens/rules, `library-docs.md`, `architecture.md`, build plan and tracker | Record interpretations, installed APIs, exported contract, observed evidence and remaining scope |
+
+**Ordered implementation:**
+
+1. Recheck installed versions and the narrow dependency diff; declare exact Chalk/Ora dependencies and document their use. Compile a native ESM integration through the actual toolchain. If the same failure survives one correction, use recover before trying again.
+2. Reconcile output-document examples/rules with the decisions above. Add tokens, output/capability types, private version token, module factories and the exported reporter. Keep library APIs private and leave ScanModule unchanged.
+3. Implement plain formatting, control stripping and environment detail limiting; then add isolated Chalk styling, Ora lifecycle and Nest cleanup. Await the final writer; never catch output failure and pretend the report completed.
+4. Add focused behavior tests and stable snapshots, module export/cleanup tests, and the native production probe. Keep tests outside src and use the existing tsc → emitted Vitest workflow. The probe constructs ReporterModule with a supplied report; it never scans Shipcheck or invokes project scripts.
+5. Run targeted verification, then the full build/test gate and a scoped review. Record actual results in the tracker, verify the scanner registry remains accurate, and mark Feature 14 complete only after acceptance passes. Feature 12 is next; public full-scan/report activation remains there.
+
+**Acceptance and verification:**
+
+| Requirement | Observable acceptance check |
+| --- | --- |
+| Canonical complete reports | Exact plain snapshots for READY, REVIEW, NOT READY, skipped environment and operational error; heading/version, metadata, row order/alignment, count grammar, labels, blanks and final newline |
+| Safe bounded details | Zero/one/five/six/many missing names; 159/160/161-character boundaries and Unicode; overflow count correct; no mutation of frozen inputs |
+| No unintended data output | Only failed-env names render as details; synthetic command-output/path/value/stack payloads in forbidden fields are absent; no object serialization |
+| Terminal text cannot inject rows/controls | ANSI/OSC, CR/LF, tabs and control characters in display fields cannot create extra report lines or active escape sequences |
+| Capability policy | Table-driven TTY/non-TTY, ci true/false, NO_COLOR absent/empty/non-empty and test-mode cases; disabled progress writes nothing and never calls Ora |
+| Styling is isolated | Enabled TTY output has semantic ANSI colors; stripping ANSI yields the identical plain report; global Chalk state and process environment remain unchanged |
+| Progress is balanced | Correct text for each ID; start→start stops the prior spinner; repeated stop is safe; report and module close clear progress; no persist calls; failed start is cleaned up |
+| Output finishes or fails honestly | Deferred writer keeps report promise pending; synchronous/async writer failures reject; spinner stops before the write; stderr stays empty for every completed outcome |
+| Real module/export integration | Consumer in an importing Nest module receives singleton TerminalReporter; native probe loads dist identities, reads real package version from unrelated cwd, writes expected stdout and exits cleanly with empty stderr |
+| Scope stays unchanged | Existing CLI help/version/discovery/shell and scanner/scoring tests pass; reporter construction is silent; no ScanModule wiring or exit-code writes |
+
+Run `npm run build`, `npm run test:compile`, and focused emitted reporter tests; then `NO_COLOR=1 npm test -- --maxWorkers=4` and `git diff --check`. No lint script exists. Manually run the compiled reporter probe in a local TTY to observe spinner cleanup/color and at 80 columns, then piped/NO_COLOR/CI modes to inspect plain output. Use fake Ora in automated tests; do not confuse injected TTY capability tests with actual terminal verification. Repeat native checks on Windows and minimum Node when available, and record gaps honestly. Feature 12/15 tests must additionally verify awaited reporting precedes command exit selection; Feature 16/17 retain full-scan fixtures and installed-package verification.
+
+**Open questions and limits:** No blocking product decision remains. Output documents now record the formatting interpretations above; no scanner policy changed. Planning itself did not install packages or run checks; the status above records subsequent implementation evidence. Windows and minimum Node 22.12 remain unverified for the reporter. Full-pipeline fixtures and installed packaging remain later features. Rollout is the later ScanModule import in Feature 12; this feature needs no migration or deployment.
 
 ---
 

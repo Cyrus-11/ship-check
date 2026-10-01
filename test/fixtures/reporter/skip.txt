@@ -1,0 +1,14 @@
+Shipcheck v0.1.0
+
+Project: example-service
+Path: /workspace/example-service
+
+✓ Git          Working tree is clean (main)
+✓ Build        npm run build passed
+✓ Tests        npm test passed
+○ Environment  No .env.example found
+
+Checks: 3 passed, 0 failed, 1 skipped
+Release score: 100/100
+Status: READY
+Release gate: PASSED

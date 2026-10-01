@@ -1,0 +1,16 @@
+Shipcheck v0.1.0
+
+Project: example-service
+Path: /workspace/example-service
+
+✓ Git          Working tree is clean (main)
+✗ Build        npm run build failed
+✓ Tests        npm test passed
+✗ Environment  Missing 2 required variables
+  - DATABASE_URL
+  - REDIS_URL
+
+Checks: 2 passed, 2 failed, 0 skipped
+Release score: 50/100
+Status: NOT READY
+Release gate: FAILED

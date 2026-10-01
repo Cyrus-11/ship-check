@@ -58,6 +58,7 @@ Path: {absolute current working directory}
 
 Rules:
 
+- Remove terminal escape sequences and replace remaining C0/C1 controls and Unicode line separators with spaces in project name, path, summaries and details before formatting. This is display safety, not arbitrary secret detection; scanners must supply safe summaries and missing names only
 - Never abbreviate the path
 - Never display the contents of `package.json`
 - Do not show package version, author, scripts, dependencies, or repository URL
@@ -78,14 +79,14 @@ Examples:
 ```text
 ✓ Git          Working tree is clean (main)
 ✗ Build        npm run build failed
-○ Environment No .env.example found
+○ Environment  No .env.example found
 ```
 
 Rules:
 
 - Use spaces, never tabs
 - Use the display names and symbols in `cli-output-tokens.md`
-- Summary begins with an uppercase character and has no trailing period
+- Preserve canonical summary wording and casing, including lowercase `npm` and `package.json`; do not append a period
 - One row represents one scanner result
 - Do not print internal scanner IDs
 - Do not expose stack traces in a completed report
@@ -99,7 +100,7 @@ Details appear only when they help the developer act.
 Allowed examples:
 
 ```text
-✗ Environment Missing 2 required variables
+✗ Environment  Missing 2 required variables
   - DATABASE_URL
   - REDIS_URL
 ```
@@ -110,9 +111,10 @@ Allowed examples:
 
 Rules:
 
-- Maximum five visible detail lines per scanner
+- Render details only for failed Environment results; other details are not public in v0.1
+- Maximum five visible missing-name items, plus the overflow indicator when necessary
 - Prefix list items with two spaces, hyphen, and one space
-- Truncate each line at 160 characters
+- Limit each plain detail line to 160 Unicode code points including prefix and truncation ellipsis; apply styling afterward
 - If more than five environment names are missing, show the first five and `- …and N more`
 - Build and test command output is not rendered in v0.1
 - Git changed paths are not rendered in v0.1; show only the changed-file count
@@ -126,6 +128,8 @@ Rules:
 - Use the text in `cli-output-tokens.md`
 - Stop and clear the spinner before printing the final scanner row
 - Never leave a spinner active while another scanner begins
+- Clear progress before the final report and on Nest module destruction; disabled progress prints nothing
+- Final reporting returns a promise that orchestration awaits before command exit selection
 - Disable spinners for CI, non-TTY output, tests, and `NO_COLOR`
 - Scanner services must not create spinners
 

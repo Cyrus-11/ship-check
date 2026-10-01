@@ -18,7 +18,7 @@ TypeScript 5.9 is selected for the documented legacy-decorator/NodeNext toolchai
 
 Verification: the final `npm install --no-audit --no-fund --strict-peer-deps` completed without warnings on Windows with Node 24.16.0/npm 11.13.0. `npm test` with `NO_COLOR=1` passed the production build, test compilation, and six scaffold checks, including constructor injection and rejection of a missing dependency. The CLI help smoke test uses the production `dist/main.js`.
 
-Feature 10 adds dotenv as documented below. The remaining approved runtime libraries (Chalk, Ora) will be installed when their features are implemented. No lint or coverage script is exposed until its tooling is configured. nest-commander brings its own transitive command, discovery, configuration, and prompt dependencies; these do not authorize separate application layers or interactive product features.
+Feature 10 adds dotenv as documented below. Feature 14 declares Chalk 4.1.2 and Ora 5.4.1 as direct dependencies; these versions were already present transitively through nest-commander. No lint or coverage script is exposed until its tooling is configured. nest-commander brings its own transitive command, discovery, configuration, and prompt dependencies; these do not authorize separate application layers or interactive product features.
 
 Vitest 5.0.1 declares Node `^22.12.0 || ^24.0.0 || >=26.0.0`. The product runtime baseline remains `>=22.12.0`; contributors must use a Node version supported by the test runner, such as Node 22.12+ on the 22.x line or Node 24.x.
 
@@ -316,12 +316,15 @@ function isPresent(value: string | undefined): boolean {
 
 **Official repository/docs:** <https://github.com/chalk/chalk>
 
-Chalk is used only by `TerminalReporter` to apply semantic color after plain lines are assembled.
+Chalk is used only by `TerminalReporter` to style plain semantic text before joining the final report.
+
+Feature 14 inspected the installed Chalk 4.1.2 manifest/types and [versioned documentation](https://github.com/chalk/chalk/blob/v4.1.2/readme.md). It requires Node >=10 and works through a native ESM default import under the existing NodeNext configuration. The direct dependency is pinned to the already locked version, avoiding a separate major upgrade. No relevant library-specific installed skill or documentation MCP was available.
 
 ```typescript
 import chalk from "chalk";
 
-const rendered = colorEnabled ? chalk.green("✓") : "✓";
+const style = new chalk.Instance({ level: colorEnabled ? 1 : 0 });
+const rendered = style.green("✓");
 ```
 
 ### Rules
@@ -342,19 +345,20 @@ const rendered = colorEnabled ? chalk.green("✓") : "✓";
 
 Ora provides temporary progress feedback for local interactive terminals.
 
+Feature 14 inspected installed Ora 5.4.1 declarations/source and [versioned documentation](https://github.com/sindresorhus/ora/tree/v5.4.1). It requires Node >=10 and its CommonJS default export works in the native ESM production build. This previously transitive version is now pinned directly. Ora defaults to stderr and `isEnabled: false` can still print text, so disabled progress must skip construction entirely. Explicit stdout and `discardStdin: false` prevent default stream routing and stdin interception; Shipcheck retains Ora's default frames and cursor management.
+
 ```typescript
 import ora from "ora";
 
-const spinner = ora({
-  text: "Running project build…",
-  isEnabled: spinnerEnabled,
-});
-
-spinner.start();
-try {
-  return await operation();
-} finally {
-  spinner.stop();
+if (spinnerEnabled) {
+  const spinner = ora({
+    text: "Running project build…",
+    stream: stdout,
+    isEnabled: true,
+    discardStdin: false,
+  });
+  // TerminalReporter retains this handle until stopScanner/report/module close.
+  spinner.start();
 }
 ```
 
@@ -366,6 +370,14 @@ try {
 - Do not use `succeed()` or `fail()` to print scanner rows; the reporter owns final rows separately
 - Only one spinner may exist at a time
 - No custom spinner frames in v0.1
+
+### Feature 14 Verification — 2026-10-01
+
+Production/test compilation and all 322 tests across 27 files passed on macOS / Node 24.21.0, including 47 reporter-specific checks. Native production-module probes exercised real package metadata, default factories and stdout writes from an unrelated cwd. Manual PTY probes verified local progress/style, clearing before the final report and on module close, plain CI and empty-NO_COLOR behavior, and 80-column output. No Windows/minimum-Node verification was performed for this feature.
+
+`ReporterModule` injects project-owned output/capability/version tokens and exports only TerminalReporter. The private version factory reuses `readPackageVersion`; tests override that provider to avoid the known Vitest JSON-import transform issue. Production capability detection captures `stdout.isTTY`, `NO_COLOR`, and test mode (`VITEST=true` or `NODE_ENV=test`). Reporter tests inject capabilities and replace Ora, without starting animation or changing process environment. Only the service imports Chalk/Ora; declarations expose no library-specific types to callers.
+
+`writeOutput` waits for Node's write callback and catches both throws and stream error events. Node calls the failed write callback before emitting `error`, so its listener remains through that turn and is removed afterward; tests cover backpressure, callback/error ordering and listener cleanup. See [Node 22 writable.write documentation](https://nodejs.org/docs/latest-v22.x/api/stream.html#streamwritablewritechunk-encoding-callback). The writer does not close process streams. `report()` rejects on writer failure; Feature 12 must await it before returning to the command. ReporterModule remains outside ScanModule until that integration feature.
 
 ---
 
