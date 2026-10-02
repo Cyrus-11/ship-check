@@ -16,6 +16,8 @@ function completed(gatePassed: boolean): ScanReport {
   return { ...reporterFixture(gatePassed ? "ready" : "review"), gatePassed };
 }
 
+const statusFixtures = { READY: "ready", REVIEW: "review", NOT_READY: "not-ready" } as const;
+
 // The command consumes only scan(); discover() and its FileSystem port are never reached here.
 function commandWith(scan: ScanService["scan"]): ScanCommand {
   return new ScanCommand({ scan } as unknown as ScanService);
@@ -47,6 +49,37 @@ describe("scan command", (): void => {
 
     expect(scan).toHaveBeenCalledExactlyOnceWith({ ci });
     expect(selectExitCode({ gatePassed }, ci)).toBe(code);
+    expect(process.exitCode).toBe(code);
+  });
+
+  it.each([
+    { status: "READY", ci: false, code: 0 },
+    { status: "READY", ci: true, code: 0 },
+    { status: "REVIEW", ci: false, code: 0 },
+    { status: "REVIEW", ci: true, code: 1 },
+    { status: "NOT_READY", ci: false, code: 0 },
+    { status: "NOT_READY", ci: true, code: 1 },
+  ] as const)("selects exit $code for a $status report with ci=$ci", async ({ status, ci, code }): Promise<void> => {
+    const report = reporterFixture(statusFixtures[status]);
+    expect(report.status).toBe(status);
+
+    await commandWith(vi.fn<ScanService["scan"]>().mockResolvedValue(report)).run([], { ci });
+
+    expect(process.exitCode).toBe(code);
+  });
+
+  it.each([
+    { preset: 2, ci: false, gatePassed: false, code: 0 },
+    { preset: 0, ci: true, gatePassed: false, code: 1 },
+    { preset: 1, ci: true, gatePassed: true, code: 0 },
+  ])("replaces exit $preset assigned during the scan with $code", async ({ preset, ci, gatePassed, code }): Promise<void> => {
+    const command = commandWith(async (): Promise<ScanReport> => {
+      process.exitCode = preset;
+      return completed(gatePassed);
+    });
+
+    await command.run([], { ci });
+
     expect(process.exitCode).toBe(code);
   });
 

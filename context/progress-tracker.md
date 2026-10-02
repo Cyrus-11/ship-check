@@ -8,15 +8,17 @@ Update this file after every completed feature. Any engineer or AI agent reading
 
 **Version:** v0.1.0
 
-**Phase:** Phase 4 — Orchestration and Reporting
+**Phase:** Phase 5 — Verification and Packaging
 
 **In progress:** None
 
-**Last completed:** 12 Scan Orchestration
+**Last completed:** 15 CI Exit Enforcement
 
-**Next:** 15 CI Exit Enforcement
+**Next:** 16 Integration Fixture Suite
 
 **Blockers:** None
+
+**Feature 15 — 2026-10-02:** Verified the public exit behavior end to end without changing production code, following the plan in `build-plan.md`. New `test/helpers/scanner-result-probe.ts` preload replaces only the four compiled scanners' `run` methods (and, in one mode, `TerminalReporter.report`), so real orchestration, scoring, rendering, command and bootstrap run without spawning Git or npm. `scan-command.integration.spec.ts` now asserts the full rendered report and exit for READY (0/0), REVIEW and NOT READY (0/1), a throwing scanner (0/1, never 2), scanners that assign `process.exitCode` 0/1/2 (command result wins), and a rendering failure (empty stdout, fixed fatal stderr, exit 2 in both modes). New `test/unit/common/exit-ownership.spec.ts` fails if `process.exit(` appears in `src/` or `process.exitCode` appears outside `bootstrap.ts` and `commands/scan.command.ts`. `scan.command.spec.ts` adds a status-named READY/REVIEW/NOT_READY × local/CI matrix and overwritten-exit cases. Production/test compilation, 64 focused checks and the full 360 tests across 29 files passed; `git diff --check` passed. Manual compiled-CLI runs on a scratch npm/Git project: clean READY `--ci` exit 0; dirty tree local exit 0 and `--ci` exit 1 (NOT READY 67). Scanner registry remains accurate. Verified on macOS / Node 24.21.0 only; Windows exit propagation and minimum Node 22.12 remain unverified.
 
 **Feature 12 — 2026-10-01:** Activated the real scan pipeline. `ScanService` injects FileSystem, the `SCANNERS` registry, Clock, ScoringService and TerminalReporter, and `ScanModule` imports the scoring and reporter modules. The service:
 - discovers the project once and awaits each scanner in registry order, wrapping each one in a balanced progress start/stop;
@@ -91,7 +93,7 @@ Verification:
 - [x] 12 Scan Orchestration
 - [x] 13 Scoring Service
 - [x] 14 Terminal Reporter
-- [ ] 15 CI Exit Enforcement
+- [x] 15 CI Exit Enforcement
 
 ### Phase 5 — Verification and Packaging
 
@@ -117,11 +119,11 @@ Verification:
 | Gate                       | Status      | Last verified |
 | -------------------------- | ----------- | ------------- |
 | TypeScript build           | Passed production/test compilation including orchestration | 2026-10-01 |
-| Unit tests                 | Passed in full 336-test suite; orchestration unit cases added | 2026-10-01 |
-| Integration tests          | Passed including production-DI orchestration probe and minimal-project compiled scan; representative fixtures pending (Feature 16) | 2026-10-01 |
+| Unit tests                 | Passed in full 360-test suite; exit matrix and exit-ownership guard added | 2026-10-02 |
+| Integration tests          | Passed including production-DI orchestration probe, minimal-project compiled scan and the compiled exit matrix through the real reporter; representative fixtures pending (Feature 16) | 2026-10-02 |
 | Help/version smoke test    | Root/scan help and version passed; invalid usage returns 2 | 2026-09-21 |
 | Local scan smoke test      | Real report and exit 0 for minimal (automated) and scratch npm/Git projects (manual) | 2026-10-01 |
-| CI exit-code smoke test    | READY exit 0, REVIEW/NOT READY exit 1, discovery failures exit 2; full matrix is Feature 15 | 2026-10-01 |
+| CI exit-code smoke test    | Full matrix passed through the real reporter: READY 0, REVIEW/NOT READY/scanner error 1 in CI, local 0; scanner-assigned exits overwritten; render/usage/discovery/bootstrap/cleanup failures 2 | 2026-10-02 |
 | Package dry run            | Not started | —             |
 | Secret-leak negative check | Passed prior checks plus reporter detail allowlist/extra-field sentinels and terminal-control safety; orchestration throw sentinels absent from results/report/streams; manual missing-environment scan printed names only | 2026-10-01 |
 | Shipcheck-owned mutation check | Passed for help/version, discovery, scanners, and full minimal-project scans (files unchanged); Build/Test execute repository-owned scripts that may have side effects | 2026-10-01 |
@@ -149,6 +151,12 @@ Verification:
 - Shipcheck-owned operations never modify the scanned repository; repository-owned build/test scripts may generate files or perform other side effects
 
 Add implementation-time decisions below this line with date, reason, and affected files.
+
+### Feature 15 implementation and verification — 2026-10-02
+
+- No production change was needed: `ScanCommand` already assigned the exit after the awaited scan and report, and bootstrap already owned exit `2`. The feature added verification only.
+- Controlled compiled scans patch scanner `run` prototypes from `dist` in a preload, rather than overriding `SCANNERS` in a test module, so the real CLI bootstrap and command path is exercised. Reuse `scanner-result-probe.ts` when a real-pipeline report is needed without executing repository code.
+- Limits: macOS / Node 24.21.0 only. Representative fixtures (16) and installed packaging (17) remain.
 
 ### Feature 12 implementation and verification — 2026-10-01
 

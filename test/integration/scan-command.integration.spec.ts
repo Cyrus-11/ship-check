@@ -6,7 +6,9 @@ import { execa } from "execa";
 import { describe, expect, it } from "vitest";
 
 type CliResult = { stdout: string; stderr: string; exitCode: number | undefined };
-type ProbeOptions = { scan?: string; lifecycle?: string; cwd?: string; ci?: string };
+type ProbeOptions = {
+  scan?: string; lifecycle?: string; cwd?: string; ci?: string; scanners?: string; scannerExit?: string;
+};
 
 const entry = resolve("dist/main.js");
 const usageError = "Shipcheck received invalid arguments. Run shipcheck --help for usage.\n";
@@ -32,6 +34,43 @@ async function minimalReport(directory: string): Promise<string> {
     "Checks: 0 passed, 3 failed, 1 skipped\nRelease score: 0/100\nStatus: NOT READY\nRelease gate: FAILED\n";
 }
 
+type ControlledScan = { rows: string; checks: string; score: number; status: string; gate: string };
+
+const passedRows = {
+  git: "✓ Git          Working tree is clean (main)\n",
+  build: "✓ Build        npm run build passed\n",
+  test: "✓ Tests        npm test passed\n",
+  env: "✓ Environment  2 required variables are present\n",
+};
+const controlledScans: Record<string, ControlledScan> = {
+  ready: {
+    rows: passedRows.git + passedRows.build + passedRows.test + passedRows.env,
+    checks: "4 passed, 0 failed, 0 skipped", score: 100, status: "READY", gate: "PASSED",
+  },
+  review: {
+    rows: passedRows.git + "✗ Build        npm run build failed\n" + passedRows.test + passedRows.env,
+    checks: "3 passed, 1 failed, 0 skipped", score: 75, status: "REVIEW", gate: "FAILED",
+  },
+  "not-ready": {
+    rows: passedRows.git + "✗ Build        npm run build failed\n" + "✗ Tests        npm test failed\n" + passedRows.env,
+    checks: "2 passed, 2 failed, 0 skipped", score: 50, status: "NOT READY", gate: "FAILED",
+  },
+  throw: {
+    rows: "! Git          Scanner could not complete\n" + passedRows.build + passedRows.test + passedRows.env,
+    checks: "3 passed, 1 failed, 0 skipped", score: 75, status: "REVIEW", gate: "FAILED",
+  },
+};
+
+// Rendered by the production scoring/reporter path from the scanner-result probe's rows.
+async function controlledReport(directory: string, mode: string): Promise<string> {
+  const scan = controlledScans[mode];
+  if (scan === undefined) throw new Error("Unknown controlled scan");
+  const { version } = JSON.parse(await readFile("package.json", "utf8")) as { version: string };
+  return `Shipcheck v${version}\n\nProject: test-only-project\nPath: ${await realpath(directory)}\n\n` +
+    `${scan.rows}\nChecks: ${scan.checks}\nRelease score: ${scan.score}/100\n` +
+    `Status: ${scan.status}\nRelease gate: ${scan.gate}\n`;
+}
+
 // Never run an unprobed scan from this repository: it would execute Shipcheck's own tests.
 async function withMinimalProject(use: (directory: string) => Promise<void>): Promise<void> {
   const directory = await mkdtemp(join(tmpdir(), "shipcheck-scan-"));
@@ -53,6 +92,9 @@ async function runCli(args: string[], options: ProbeOptions = {}): Promise<CliRe
   if (options.lifecycle !== undefined) {
     preload.push("--import", new URL("../helpers/bootstrap-probe.js", import.meta.url).href);
   }
+  if (options.scanners !== undefined) {
+    preload.push("--import", new URL("../helpers/scanner-result-probe.js", import.meta.url).href);
+  }
   const result = await execa(process.execPath, [...preload, entry, ...args], {
     cwd: options.cwd ?? process.cwd(),
     env: {
@@ -60,6 +102,8 @@ async function runCli(args: string[], options: ProbeOptions = {}): Promise<CliRe
       CI: options.ci,
       SHIPCHECK_SCAN_PROBE: options.scan,
       SHIPCHECK_TEST_PROBE: options.lifecycle,
+      SHIPCHECK_SCANNER_PROBE: options.scanners,
+      SHIPCHECK_SCANNER_EXIT: options.scannerExit,
       // Keep an enclosing repository or inherited Git location from changing the Git check.
       GIT_CEILING_DIRECTORIES: dirname(await realpath(options.cwd ?? process.cwd())),
       GIT_DIR: undefined,
@@ -86,6 +130,46 @@ describe("compiled scan command", (): void => {
       });
     });
   }, 30_000);
+
+  it.each([
+    { mode: "ready", args: ["scan"], code: 0 },
+    { mode: "ready", args: ["scan", "--ci"], code: 0 },
+    { mode: "review", args: ["scan"], code: 0 },
+    { mode: "review", args: ["scan", "--ci"], code: 1 },
+    { mode: "not-ready", args: ["scan"], code: 0 },
+    { mode: "not-ready", args: ["scan", "--ci"], code: 1 },
+    // A scanner exception is a scored result, never a fatal exit.
+    { mode: "throw", args: ["scan"], code: 0 },
+    { mode: "throw", args: ["scan", "--ci"], code: 1 },
+  ])("renders the real $mode report and exits $code for $args", async ({ mode, args, code }): Promise<void> => {
+    await withMinimalProject(async (directory): Promise<void> => {
+      expect(await runCli(args, { cwd: directory, scanners: mode })).toEqual({
+        stdout: await controlledReport(directory, mode), stderr: "", exitCode: code,
+      });
+    });
+  }, 30_000);
+
+  it.each([
+    { mode: "review", args: ["scan"], attempt: "2", code: 0 },
+    { mode: "review", args: ["scan", "--ci"], attempt: "0", code: 1 },
+    { mode: "ready", args: ["scan", "--ci"], attempt: "1", code: 0 },
+  ])("ignores a $mode scanner that assigns exit $attempt for $args", async ({ mode, args, attempt, code }): Promise<void> => {
+    await withMinimalProject(async (directory): Promise<void> => {
+      expect(await runCli(args, { cwd: directory, scanners: mode, scannerExit: attempt })).toEqual({
+        stdout: await controlledReport(directory, mode), stderr: "", exitCode: code,
+      });
+    });
+  }, 30_000);
+
+  it.each([{ args: ["scan"] }, { args: ["scan", "--ci"] }])(
+    "selects no gate exit when the report cannot render for $args", async ({ args }): Promise<void> => {
+      await withMinimalProject(async (directory): Promise<void> => {
+        expect(await runCli(args, { cwd: directory, scanners: "report-fails" })).toEqual({
+          stdout: "", stderr: fatalError, exitCode: 2,
+        });
+      });
+    }, 30_000,
+  );
 
   it("completes both the report and application cleanup with the CI gate exit", async (): Promise<void> => {
     await withMinimalProject(async (directory): Promise<void> => {

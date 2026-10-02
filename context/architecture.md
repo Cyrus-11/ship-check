@@ -496,6 +496,8 @@ Canonical ID-based names, symbols, labels and spacing are reporter-owned. Errors
 
 Use `process.exitCode`; do not call `process.exit()` inside services. This allows buffered terminal output and application cleanup to finish.
 
+Feature 15 verified this table through the compiled CLI with the real scoring and reporter path. Scanner-assigned `process.exitCode` values are overwritten by `ScanCommand`, and a rendering failure exits `2` with no gate exit. `test/unit/common/exit-ownership.spec.ts` keeps `process.exitCode` references in `bootstrap.ts` and `commands/scan.command.ts` only, and forbids `process.exit()` in `src/`.
+
 ---
 
 ## Test Architecture
@@ -534,7 +536,7 @@ Use `process.exitCode`; do not call `process.exit()` inside services. This allow
 ## Invariants
 
 - No controllers, HTTP adapters, ports, REST routes, Swagger, guards, or web middleware
-- Command/bootstrap layers own exit decisions; `ScanCommand` will select completed-scan exits
+- Command/bootstrap layers own exit decisions; `ScanCommand` selects completed-scan exits
 - Only `ScanService` orchestrates the full scanner sequence
 - Only `ProcessRunner` starts child processes
 - Only `TerminalReporter` formats user-facing scan output

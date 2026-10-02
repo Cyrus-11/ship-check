@@ -942,6 +942,69 @@ Connect completed reports to public exit behavior.
 - Command unit exit matrix
 - Compiled CLI process tests for `0`, `1`, and `2`
 
+#### Feature 15 architecture plan — 2026-10-02
+
+**Status:** Implemented and verified on 2026-10-02 as planned, with no production code change and no deviation. The plan was made against clean `main`/`origin/main` at `35897b4`. The full suite (360 tests across 29 files) passed on macOS / Node 24.21.0. Feature 16 is next.
+
+**Finding:** The exit behavior already exists. `ScanCommand.run()` awaits `ScanService.scan()`, which awaits `TerminalReporter.report()`, then assigns `process.exitCode = selectExitCode(report, ci)`. Bootstrap maps parser, startup, discovery, execution and cleanup failures to `2` after factory shutdown. No `process.exit()` call exists in `src/`. Feature 15 is therefore a verification milestone. It adds no production code unless a new test exposes a defect; any such fix stays in `src/commands/` or `src/bootstrap.ts` and is recorded as a deviation.
+
+**Existing coverage (keep; do not duplicate):**
+
+- Command unit: `ci` × `gatePassed` four-case matrix; exit unassigned while the scan is pending; rejection leaves the exit unassigned.
+- Compiled CLI: real minimal-project scan (NOT READY) exits `0`/`1` with the full report and empty stderr. The `scan-probe` service replacement gives READY/REVIEW `0`/`1` after cleanup. Usage errors, service rejection, cleanup failure, missing/invalid `package.json` exit `2`. Ambient `CI` does not select CI mode.
+- Bootstrap: metadata/startup/cleanup failures exit `2` with fixed safe stderr.
+
+**Gaps this feature closes:**
+
+1. READY and REVIEW exits have only been observed with `ScanService` replaced, so the real scoring → reporter → command path is proven only for NOT READY.
+2. Nothing demonstrates that a scanner cannot decide the exit, at runtime or structurally.
+3. Nothing shows at process level that a rendering failure prevents a gate exit (report-before-exit counterpart).
+
+**Design:**
+
+- **Proposed `test/helpers/scanner-result-probe.ts`** — a `--import` preload in the `scan-probe` style. It imports `GitScanner`, `BuildScanner`, `TestScanner`, `EnvScanner` and `TerminalReporter` from `dist/` (same module URLs the CLI loads) and replaces only each scanner's `run` prototype method. Scanner IDs, names, weights, the `SCANNERS` order, `ScanService`, `ScoringService`, `TerminalReporter`, `ScanCommand` and bootstrap remain production code. No Git or npm process is spawned. Controlled by `SHIPCHECK_SCANNER_PROBE`:
+  - `ready` — all four passed → 100 READY
+  - `review` — Build failed → 75 REVIEW
+  - `not-ready` — Build and Tests failed → 50 NOT READY
+  - `throw` — Git `run` throws a sentinel, others pass → Git `error` "Scanner could not complete", 75 REVIEW
+  - `report-fails` — results as `ready`; `TerminalReporter.prototype.report` rejects with a sentinel before writing
+  - `SHIPCHECK_SCANNER_EXIT=<n>` — when set, every patched scanner assigns `process.exitCode = n` before returning (hostile scanner)
+  Failed rows use empty `details`, so no Environment detail lines appear.
+- **Extend `test/integration/scan-command.integration.spec.ts`** with a `scanners`/`scannerExit` probe option, rather than a new file, to reuse `runCli`, `withMinimalProject` (Git-ceiling isolation and mutation checks) and the leak/ANSI guards. Expected stdout is built like `minimalReport` from the controlled rows. Feature 16 may extract the shared runner when it adds fixtures.
+- **Proposed `test/unit/common/exit-ownership.spec.ts`** — reads every `src/**/*.ts` and asserts that `process.exit(` never appears and `process.exitCode` appears only in `src/commands/scan.command.ts` and `src/bootstrap.ts`. This is the structural half of "scanner services cannot set exits"; the hostile probe is the runtime half.
+- **Extend `test/unit/commands/scan.command.spec.ts`:** add a NOT READY fixture to the matrix (status-named cases READY/REVIEW/NOT_READY × local/CI). Add cases where `process.exitCode` is preset to a conflicting value (`2` before a local run, `0` before a failed CI run) — or set by the `scan` mock during execution — and the command's selection replaces it.
+
+**Compiled CLI matrix (all in an isolated minimal project, full stdout asserted, stderr empty unless stated):**
+
+| Probe | `scan` | `scan --ci` | Proves |
+| --- | ---: | ---: | --- |
+| `ready` | 0 | 0 | Real READY report and gate pass |
+| `review` | 0 | 1 | Real REVIEW fails the gate |
+| `not-ready` | 0 | 1 | Real NOT READY fails the gate |
+| `throw` | 0 | 1 | A scanner exception is a scored result, never exit `2`; sentinel absent |
+| `review` + exit `2` | 0 | — | Scanner-assigned exit is overwritten locally |
+| `review` + exit `0` | — | 1 | Scanner cannot force a CI pass |
+| `ready` + exit `1` | — | 0 | Scanner cannot force a CI failure |
+| `report-fails` | 2 | 2 | stdout empty, fixed fatal stderr; no gate exit without a rendered report; sentinel absent |
+
+Existing `2` cases (usage, discovery, startup, service rejection, cleanup) remain the bootstrap half of the matrix.
+
+**Acceptance criteria:**
+
+- Every row above and every existing exit test passes against the compiled CLI.
+- For each completed scan, stdout contains exactly one complete report ending with `Release gate: …\n`, and the exit equals the architecture table for that status and mode.
+- A scanner that throws or assigns `process.exitCode` cannot change the exit; the source guard confirms only the command and bootstrap reference exit state.
+- A rendering failure yields exit `2`, the fixed safe message, and no partial report.
+- No test scans Shipcheck's own repository; temp project contents are unchanged after each run.
+
+**Verification:** `npm run build`, `npm run test:compile`, focused emitted command/exit specs, then `NO_COLOR=1 npm test -- --maxWorkers=4` and `git diff --check`. Manually run the compiled CLI in a scratch npm/Git project for clean READY (`--ci` → 0) and dirty (`scan` → 0, `--ci` → 1), checking `$?`. Windows exit propagation and minimum Node 22.12 remain unverified unless run there.
+
+**Docs on completion:** progress tracker (status, CI exit-code gate row, decision record); architecture note that Feature 15 verified the exit table; scanner registry checked (already states scanners never set exits — no behavior change expected).
+
+**Out of scope:** new exit codes, a `--json` or other report format, retry/timeout changes, representative fixture projects (Feature 16), packaged-executable checks (Feature 17).
+
+**Open questions:** None blocking.
+
 ---
 
 ## Phase 5 — Verification and Packaging
