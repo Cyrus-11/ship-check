@@ -12,11 +12,15 @@ Update this file after every completed feature. Any engineer or AI agent reading
 
 **In progress:** None
 
-**Last completed:** 15 CI Exit Enforcement
+**Last completed:** 16 Integration Fixture Suite
 
-**Next:** 16 Integration Fixture Suite
+**Next:** 17 Executable and Package Smoke Test
 
 **Blockers:** None
+
+**Feature 16 — 2026-10-03:** Implemented the planned full-pipeline fixture suite without production or dependency changes. Added seven fixture families in `test/fixtures/projects/`, isolated real Git/npm/compiled-CLI setup and snapshots in `test/helpers/project-fixture.ts`, and 16 local/CI cases in `test/integration/project-fixtures.integration.spec.ts` (invalid-project has missing/malformed variants). Exact rows, counts, scores, statuses, gates, stdout/stderr and exits are asserted. Synthetic environment values and subprocess sentinels never appear in reports. Build/test artifacts prove order, CI=true and continuation after build failure; complete file snapshots allow only those exact artifacts, compare Git HEAD/index/status and preserve source fixtures. Production/test compilation passed; the focused 16-case suite passed twice; `NO_COLOR=1 npm test -- --maxWorkers=4` passed all 376 tests across 30 files. Manual compiled CI runs confirmed READY/exit 0 and failed-build REVIEW/exit 1 with later scanners passing and empty stderr. Review found no actionable findings; scanner registry and README were updated. Verified on macOS / Node 24.21.0 / npm 11.19.0; Windows, Linux, minimum Node 22.12 and installed packaging remain unverified. Feature 17 is next. Changes are uncommitted.
+
+**Feature 16 planning — 2026-10-03:** Recorded an architecture plan in `build-plan.md` against clean `main`/local `origin/main` at `5df2929`. It exercises the real compiled CLI using seven dependency-free fixture families (invalid-project has missing/malformed manifest variants), each in local/CI mode. Includes isolated Git/npm/environment settings, realpath handling, exact reports/exits, synthetic output leak checks, deterministic build/test markers, and filesystem snapshots with explicit generated-artifact allowances. Existing probe tests remain. Scanner registry was checked and remains accurate; no scanner behavior changes are planned. No implementation, dependency installation, build or tests performed. Feature 16 remains next; no blocking decision.
 
 **Feature 15 — 2026-10-02:** Verified the public exit behavior end to end without changing production code, following the plan in `build-plan.md`. New `test/helpers/scanner-result-probe.ts` preload replaces only the four compiled scanners' `run` methods (and, in one mode, `TerminalReporter.report`), so real orchestration, scoring, rendering, command and bootstrap run without spawning Git or npm. `scan-command.integration.spec.ts` now asserts the full rendered report and exit for READY (0/0), REVIEW and NOT READY (0/1), a throwing scanner (0/1, never 2), scanners that assign `process.exitCode` 0/1/2 (command result wins), and a rendering failure (empty stdout, fixed fatal stderr, exit 2 in both modes). New `test/unit/common/exit-ownership.spec.ts` fails if `process.exit(` appears in `src/` or `process.exitCode` appears outside `bootstrap.ts` and `commands/scan.command.ts`. `scan.command.spec.ts` adds a status-named READY/REVIEW/NOT_READY × local/CI matrix and overwritten-exit cases. Production/test compilation, 64 focused checks and the full 360 tests across 29 files passed; `git diff --check` passed. Manual compiled-CLI runs on a scratch npm/Git project: clean READY `--ci` exit 0; dirty tree local exit 0 and `--ci` exit 1 (NOT READY 67). Scanner registry remains accurate. Verified on macOS / Node 24.21.0 only; Windows exit propagation and minimum Node 22.12 remain unverified.
 
@@ -97,7 +101,7 @@ Verification:
 
 ### Phase 5 — Verification and Packaging
 
-- [ ] 16 Integration Fixture Suite
+- [x] 16 Integration Fixture Suite
 - [ ] 17 Executable and Package Smoke Test
 - [ ] 18 Documentation and v0.1 Release Candidate
 
@@ -118,15 +122,15 @@ Verification:
 
 | Gate                       | Status      | Last verified |
 | -------------------------- | ----------- | ------------- |
-| TypeScript build           | Passed production/test compilation including orchestration | 2026-10-01 |
-| Unit tests                 | Passed in full 360-test suite; exit matrix and exit-ownership guard added | 2026-10-02 |
-| Integration tests          | Passed including production-DI orchestration probe, minimal-project compiled scan and the compiled exit matrix through the real reporter; representative fixtures pending (Feature 16) | 2026-10-02 |
+| TypeScript build           | Passed production/test compilation including fixture harness | 2026-10-03 |
+| Unit tests                 | Passed in full 376-test suite; existing exit/adapter/scanner checks retained | 2026-10-03 |
+| Integration tests          | Passed including 16 real compiled-CLI fixture cases across seven families, local/CI modes and both invalid-manifest variants | 2026-10-03 |
 | Help/version smoke test    | Root/scan help and version passed; invalid usage returns 2 | 2026-09-21 |
-| Local scan smoke test      | Real report and exit 0 for minimal (automated) and scratch npm/Git projects (manual) | 2026-10-01 |
+| Local scan smoke test      | Complete real reports and exit 0 across six valid fixture families; discovery variants exit 2 | 2026-10-03 |
 | CI exit-code smoke test    | Full matrix passed through the real reporter: READY 0, REVIEW/NOT READY/scanner error 1 in CI, local 0; scanner-assigned exits overwritten; render/usage/discovery/bootstrap/cleanup failures 2 | 2026-10-02 |
 | Package dry run            | Not started | —             |
-| Secret-leak negative check | Passed prior checks plus reporter detail allowlist/extra-field sentinels and terminal-control safety; orchestration throw sentinels absent from results/report/streams; manual missing-environment scan printed names only | 2026-10-01 |
-| Shipcheck-owned mutation check | Passed for help/version, discovery, scanners, and full minimal-project scans (files unchanged); Build/Test execute repository-owned scripts that may have side effects | 2026-10-01 |
+| Secret-leak negative check | Passed prior checks plus exact fixture reports, name-only missing details and absence of synthetic environment/subprocess sentinels | 2026-10-03 |
+| Shipcheck-owned mutation check | Fixture source trees unchanged; temporary copies permit only exact build/test artifacts, with original bytes and Git HEAD/index/status unchanged; invalid copies unchanged | 2026-10-03 |
 
 ---
 
@@ -151,6 +155,14 @@ Verification:
 - Shipcheck-owned operations never modify the scanned repository; repository-owned build/test scripts may generate files or perform other side effects
 
 Add implementation-time decisions below this line with date, reason, and affected files.
+
+### Feature 16 implementation and verification — 2026-10-03
+
+- Followed the architecture plan without changing production code, dependencies or the engine baseline. `.mjs` replaces the proposed `.cjs` fixture extension to honor native ESM conventions. Each scan uses its own copy with a path containing spaces; no fixture dependencies are installed or network commands executed.
+- Inspected installed Execa 10.0.1/Vitest 5.0.1 versions and exported option/suite types, plus official versioned documentation. No library-specific skill or documentation MCP was advertised. Test harnesses continue using Execa/Node filesystem APIs directly under the existing library-docs exception.
+- Initial compilation exposed the removed `describe.sequential` API; the installed SuiteOptions contract supports `{ concurrent: false }`. Initial real fixture runs exposed npm's rejection of one config file loaded as both user and global. Reduced it to a direct npm invocation, then used separate empty config paths. No production defect or recurring failure remained after these focused corrections.
+- Production/test compilation, both 16-case focused reruns and the full 376 tests across 30 files passed. Manual ready/failing-build CI scans produced 100 READY/exit 0 and 75 REVIEW/exit 1 respectively; both had empty stderr. Review covered plan alignment, setup/cleanup ownership, safe output, mutation accounting and verification limits; no actionable findings. README and scanner registry now include fixture coverage.
+- Limits: macOS / Node 24.21.0 / npm 11.19.0 only. Windows, Linux, minimum Node 22.12 and installed executable packaging remain unverified. Feature 17 is next; no commit or push performed.
 
 ### Feature 15 implementation and verification — 2026-10-02
 
@@ -367,6 +379,21 @@ Known blocker:
 ```
 
 ### Latest Handoff
+
+```text
+Date: 2026-10-03
+Completed feature: 16 Integration Fixture Suite
+Files changed: test/fixtures/projects/* (new), test/helpers/project-fixture.ts (new), test/integration/project-fixtures.integration.spec.ts (new), README.md, context/build-plan.md, context/progress-tracker.md, context/scanner-registry.md, context/library-docs.md
+Tests run and results: production/test compilation passed; 16 focused fixture checks passed twice; NO_COLOR=1 npm test -- --maxWorkers=4 passed all 376 tests across 30 files; git diff --check passed
+Manual verification: compiled CLI on temporary ready/failing-build fixtures in CI — 100 READY exit 0 and 75 REVIEW exit 1; later scanners continued, stderr empty
+Review: no actionable findings within scope
+Verification limits: macOS / Node 24.21.0 / npm 11.19.0; Windows/Linux/minimum Node and installed packaging remain unverified
+Decision or deviation recorded: ESM .mjs fixture scripts; Vitest concurrent:false suite option; distinct isolated npm user/global config paths
+Next feature: 17 Executable and Package Smoke Test
+Known blocker: None. Uncommitted
+```
+
+### Previous Handoff — Feature 12
 
 ```text
 Date: 2026-10-01

@@ -1031,6 +1031,61 @@ Exercise the compiled CLI against representative projects.
 - Mutation checks on temporary fixture copies account for expected build/test script output and verify that Shipcheck-owned operations make no changes
 - No network is used
 
+#### Feature 16 architecture plan — 2026-10-03
+
+**Status:** Implemented and verified on 2026-10-03, following this plan against `main` at `5df2929`. Production/test compilation passed; the 16 focused fixture checks passed twice and the full 376-test suite across 30 files passed on macOS / Node 24.21.0. No production or dependency changes. Feature 17 is next.
+
+**Outcome and scope:** Exercise `dist/main.js` against committed representative projects using real Git, npm, discovery, scanners, scoring, reporting and command exits. No production change is planned. Keep the existing probe-based exit, adapter and scanner tests; they cover operational failures and timeouts without slow fixture runs. Installed npm launchers and package contents belong to Feature 17. No new dependency, engine change, configuration feature or public command.
+
+**Current evidence:** `scan-command.integration.spec.ts` already supplies subprocess capture, exact report assertions, realpath normalization and temporary-project cleanup. Its real scan is a no-script project; READY/REVIEW coverage uses patched scanners. Scanner integration specs exercise real Git/npm independently. The lockfile agrees with the manifest on Execa 10.0.1 and Vitest 5.0.1. The existing `reject-network-listen.ts` rejects listeners only; it is not an outbound-network guard. The root ignore rules exclude `.env` and `.env.local`, so commit synthetic environment inputs under ordinary seed filenames and materialize them only in temporary copies.
+
+**Proposed files:**
+
+- `test/fixtures/projects/{ready,dirty-git,failing-build,failing-test,missing-env,no-env-example,invalid-project}/`: small dependency-free npm projects, Node `.mjs` scripts and synthetic environment seeds. The invalid-project directory contains a README; missing and malformed manifests are prepared as two temporary variants.
+- `test/helpers/project-fixture.ts`: copy/setup/cleanup, isolated subprocess environment, Git initialization, file snapshots and real compiled-CLI execution.
+- `test/integration/project-fixtures.integration.spec.ts`: table-driven local/CI cases and exact expected reports.
+- `context/progress-tracker.md`: completion evidence and remaining platform limits. Verify `scanner-registry.md` and add the fixture coverage paths on completion without changing behavior.
+
+**Fixture design and isolation:**
+
+1. Give each valid fixture literal `node scripts/build.mjs` and `node scripts/test.mjs` scripts, no dependencies or lifecycle hooks, and explicit expected names/results. Use only Node built-ins. Scripts write deterministic artifacts, emit recognizable synthetic stdout/stderr sentinels and exit promptly. Test scripts assert `CI=true` and consume the build marker, including when the build deliberately fails, proving tests still ran after that failure.
+2. Copy a fixture to a fresh temporary directory for every fixture/mode combination, including a path containing spaces. Never execute scripts in the committed fixture tree or Shipcheck's own repository. Resolve the copy's realpath for printed-path assertions. Initialize and commit Git on `main` after materializing seed environment files and adding an ignore rule for the exact generated artifact directory. Add one untracked file after the initial commit for dirty-git.
+3. Isolate Git setup and CLI execution from global/system configuration, signing, hooks, templates and inherited repository selectors. Use an empty template directory, explicit test identity and disabled signing; unset `GIT_DIR`, `GIT_WORK_TREE`, index/common-directory overrides and injected Git config overrides. Set the Git ceiling to the temporary copy's real parent and disable optional locks. Keep all setup paths inside the temporary harness root.
+4. Use empty temporary npm user/global config files, offline mode, disabled audit/funding/update notification and an isolated cache. Preserve PATH and operating-system variables needed for Node/npm launchers. Unset fixture variable names, probe variables and inherited `NODE_OPTIONS` in the subprocess only; do not mutate the parent environment. Reuse the listener-rejection preload explicitly for the CLI. Clear ambient CI for the scan child; TestScanner must supply `CI=true` to its own npm child.
+5. No install, fetch, remote Git operation or network-capable script is involved. Offline npm settings supplement the dependency-free fixture design; do not claim the listener guard or offline npm settings sandbox arbitrary repository code. Inspect scripts and command arguments to establish this suite's no-network behavior.
+
+**Expected matrix:** Run each row independently in local and CI mode. Report rows remain Git → Build → Tests → Environment, with empty stderr for completed scans.
+
+| Fixture | Results (Git / Build / Tests / Environment) | Counts passed / failed / skipped | Score and status | Gate | Local / CI exit |
+| --- | --- | --- | --- | --- | --- |
+| ready | passed / passed / passed / passed | 4 / 0 / 0 | 100 READY | PASSED | 0 / 0 |
+| dirty-git | failed / passed / passed / passed | 3 / 1 / 0 | 75 REVIEW | FAILED | 0 / 1 |
+| failing-build | passed / failed / passed / passed | 3 / 1 / 0 | 75 REVIEW | FAILED | 0 / 1 |
+| failing-test | passed / passed / failed / passed | 3 / 1 / 0 | 75 REVIEW | FAILED | 0 / 1 |
+| missing-env | passed / passed / passed / failed | 3 / 1 / 0 | 75 REVIEW | FAILED | 0 / 1 |
+| no-env-example | passed / passed / passed / skipped | 3 / 0 / 1 | 100 READY | PASSED | 0 / 0 |
+| invalid-project: missing manifest | discovery fails; no scanner rows | — | no report | — | 2 / 2 |
+| invalid-project: malformed manifest | discovery fails; no scanner rows | — | no report | — | 2 / 2 |
+
+Use two sorted missing names in missing-env, with one absent and one whitespace-only; synthetic example values must not satisfy them. Ready fixtures can supply two names across `.env` and `.env.local`. Clear those names from inherited environment so host credentials cannot turn a failure into a pass. Exact expectations come from canonical output rules, not production scoring or reporter functions; read only package version and temporary realpath dynamically.
+
+**Mutation and continuation checks:** Snapshot committed fixture trees before and after the suite. For each temporary copy, snapshot relative paths, entry types and file bytes after setup (including the intended dirty file). After scanning, allow only named build/test artifacts with exact expected content; require every original file to remain byte-identical and reject other additions/deletions. Exclude `.git` internal housekeeping from the byte snapshot, but separately compare HEAD, staged changes and porcelain status before/after with optional locks disabled. Ignored generated artifacts must still be checked by the filesystem snapshot. Invalid-project variants allow no changes and produce no script artifacts. Generated markers prove build-before-test execution and that tests ran after build failure; exact later report rows establish continuation through Environment. Do not infer a complete mutation guarantee from Git status alone.
+
+**Ordered implementation:**
+
+1. Inspect installed Execa/Vitest types and relevant version documentation under the project's mandatory documentation rule before writing integration calls. Reuse established APIs and compiled-test conventions; no dependency installation is needed.
+2. Add fixture inputs and deterministic script artifacts; ensure synthetic values and ignored environment seed handling are explicit.
+3. Add the focused fixture helper. Reuse the existing runner's options without moving probe handling out of `scan-command.integration.spec.ts`; extracting that unrelated harness is unnecessary for this milestone.
+4. Add the matrix with separate stdout, stderr and exit assertions; exact complete reports; missing-name details; no ANSI, carriage-return animation, Nest logs, stacks, environment values or subprocess sentinels. Assert source immutability and the exact artifact allowance.
+5. Use bounded subprocess/test deadlines suited to short npm scripts (initial CLI allowance 30 seconds, per-case 60 seconds), sequential cases within this file and finally cleanup limited to owned temporary roots. Treat timeout as a test failure; do not change production 120-second limits. If a failure survives one correction, use `/recover`.
+6. Run focused verification, then the full gate. Update tracker/registry with actual evidence and platform limits; leave Features 17–18 unchecked.
+
+**Acceptance and verification:** The matrix proves fixture-specific rows, counts, skipped denominator, readiness, gate and local/CI exits. Exact stream assertions prove safe output and one complete report. Marker and snapshot checks prove continuation and account precisely for repository-owned side effects. Fresh copies, isolated configuration, deterministic branch/environment and source snapshots prove repeatability and committed-fixture preservation. Run `npm run build`, `npm run test:compile`, then `NO_COLOR=1 npx --no-install vitest run .test-dist/test/integration/project-fixtures.integration.spec.js --maxWorkers=1`; repeat the focused suite once to check isolation, then `NO_COLOR=1 npm test -- --maxWorkers=4` and `git diff --check`. Verify fixture inputs are tracked rather than silently ignored. Record Windows, Linux and minimum Node 22.12 as unverified unless checks are actually executed there; retain the same suite for those environments.
+
+**Open questions:** None blocking. This plan adds verification without runtime interfaces or rollout changes. Production defects discovered by fixtures require a focused documented correction and affected regression checks.
+
+**Implementation notes — 2026-10-03:** Used native ESM `.mjs` fixtures to follow code standards. Vitest 5.0.1 uses `describe(..., { concurrent: false }, ...)`; the initial `describe.sequential` call failed test compilation and was corrected after inspecting installed declarations and official documentation. npm user/global config files must have distinct paths: the first fixture run failed because npm rejected double-loading one empty file. A direct isolated npm reproduction identified the cause; separate empty files fixed it, and both focused reruns and the full gate passed. Manual compiled CI runs confirmed ready → 100 READY/exit 0 and failing-build → 75 REVIEW/exit 1, with Tests/Environment continuing and empty stderr. Review found no actionable issues. All fixture inputs are visible as untracked, non-ignored files ready for a later commit; no staging, commit or push was performed. Windows, Linux, minimum Node 22.12 and installed packaging remain unverified.
+
 ---
 
 ### 17 Executable and Package Smoke Test

@@ -4,7 +4,7 @@ Shipcheck is a local-first release-readiness CLI for Node.js and TypeScript repo
 
 ## Current status
 
-**Features 01–14 are complete.** The CLI foundation, shared domain contracts, infrastructure adapters, project discovery, all four scanners, their ordered registry, scan orchestration, readiness scoring, and the terminal reporter are implemented and tested. v0.1 is not yet complete: CI exit verification, full-pipeline fixtures, packaging checks, and release-candidate documentation remain.
+**Features 01–16 are complete.** The CLI foundation, shared domain contracts, infrastructure adapters, project discovery, all four scanners, their ordered registry, scan orchestration, readiness scoring, terminal reporter, CI exit verification, and full-pipeline fixtures are implemented and tested. v0.1 is not yet complete: packaging checks and release-candidate documentation remain.
 
 The `scan` command discovers the target project by reading `<cwd>/package.json` without searching parent directories. It then runs the four scanners one at a time in Git → Build → Tests → Environment order, scores the results, and prints one report to stdout. A scanner that fails or throws unexpectedly is recorded as a result and the remaining scanners still run. A completed local scan exits `0`; `scan --ci` exits `0` only when the release gate passes and `1` otherwise. A missing, unreadable, or invalid `package.json` exits `2`. Only the boolean `--ci` option is accepted; custom paths and flag values are unsupported.
 
@@ -22,8 +22,10 @@ The `scan` command discovers the target project by reading `<cwd>/package.json` 
 | Scan orchestration (12) | Runs the registry sequentially, turns an unexpected scanner throw into a safe `error` result, scores once, awaits the report, and returns it to the command |
 | Scoring service (13) | Calculates the readiness score, status, and release-gate decision from completed results; excludes skipped checks and uses the shared thresholds |
 | Terminal reporter (14) | Prints the report with canonical symbols and labels, shows local progress in interactive terminals, and disables color/animation in CI, non-TTY output, and with `NO_COLOR` |
+| CI exit enforcement (15) | Verifies complete reports and local/CI gate exits, safe fatal failures, cleanup and command ownership of exit decisions |
+| Integration fixtures (16) | Exercises the real compiled CLI with seven isolated project families, exact reports/exits and explicit build/test artifact checks |
 
-**Next: Feature 15 — CI Exit Enforcement.** Full-pipeline fixtures, executable packaging verification, and release-candidate documentation follow. See the [progress tracker](context/progress-tracker.md) and [build plan](context/build-plan.md).
+**Next: Feature 17 — Executable and Package Smoke Test.** Release-candidate documentation follows. See the [progress tracker](context/progress-tracker.md) and [build plan](context/build-plan.md).
 
 ## Readiness scoring
 
@@ -74,7 +76,9 @@ The suite covers CLI help/version, strict usage, local/CI option forwarding and 
 
 Project discovery and all four scanners have unit and integration coverage using isolated temporary projects. Registry tests verify order, weights, singleton identity, and provider exports. The scoring service adds 23 checks for result combinations, skipped/error weights, threshold and rounding boundaries, immutable inputs, independent calculations, and module export injection. Reporter tests compare canonical text snapshots and cover detail limits, control-character stripping, color/progress policy, and awaited writes. Orchestration tests cover sequential execution, throw isolation, scoring/reporting order, and fatal failures. They also run the compiled CLI against a minimal temporary project. No test scans Shipcheck's own repository, which would run its test suite recursively.
 
-**Last verified:** production/test compilation and **336 tests across 28 files passed** on macOS with Node 24.21.0 (2026-10-01). Earlier features were also verified on Windows with Node 24.16.0. Minimum Node 22.12, Linux, the reporter and orchestration on Windows, representative full-pipeline fixtures, and installed Shipcheck packaging remain unverified.
+The full-pipeline fixture suite runs real Git/npm commands on fresh temporary copies of seven project families in both local and CI modes. It covers ready, dirty Git, failing build/test, missing environment, skipped environment and missing/malformed manifests, checks exact reports and exits, and permits only the expected repository-owned build/test artifacts. The fixtures have no dependencies or network operations.
+
+**Last verified:** production/test compilation and **376 tests across 30 files passed** on macOS with Node 24.21.0 (2026-10-03). Earlier features were also verified on Windows with Node 24.16.0. Minimum Node 22.12, Linux, the reporter/orchestration/fixture suite on Windows, and installed Shipcheck packaging remain unverified.
 
 On Windows, the process adapter supports native `.exe`/`.com` commands and the installed `npm.cmd` launcher. Shipcheck passes executable and arguments separately with `shell: false`; Execa handles npm's internal Windows shell launcher. The process-tree tests need permission to run Windows `taskkill`. Restricted sandboxes can prevent descendant cleanup; termination is best-effort and may exceed the configured timeout. See [library notes](context/library-docs.md) for details and supported-launcher limitations.
 

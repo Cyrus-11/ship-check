@@ -383,6 +383,12 @@ Production/test compilation and all 322 tests across 27 files passed on macOS / 
 
 ## Vitest
 
+### Feature 16 integration harness — 2026-10-03
+
+Inspected installed Execa 10.0.1 option declarations and Vitest 5.0.1 suite/hook declarations, along with the [Execa v10.0.1 API](https://github.com/sindresorhus/execa/blob/v10.0.1/docs/api.md), [Vitest v5.0.1 test API](https://github.com/vitest-dev/vitest/blob/v5.0.1/docs/api/test.md) and [official describe documentation](https://vitest.dev/api/describe). The fixture harness uses separate executable/argument arrays, `shell:false`, captured output, bounded timeout/buffer, `reject:false`, and a complete sanitized environment with `extendEnv:false`. The installed Vitest suite API uses `{ concurrent: false }` to enforce sequential cases; it has no `describe.sequential` property. No relevant library-specific installed skill or documentation MCP was advertised.
+
+The harness follows the existing exception allowing test-only Execa/Node filesystem access, without changing production adapters. npm rejects loading the same config file as both user and global; isolated configuration therefore uses two distinct empty files outside the scanned copy. Fixture scripts use native ESM `.mjs` and Node built-ins, with no dependencies to install. Production/test compilation and all 376 tests across 30 files passed on macOS / Node 24.21.0 / npm 11.19.0. No package version or engine change was required.
+
 **Official docs:** <https://vitest.dev/guide/>
 
 The current Vitest documentation requires Node.js 22.12 or newer. Shipcheck therefore sets Node 22.12 as its minimum runtime rather than relying on an older test-runner release.

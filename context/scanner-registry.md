@@ -305,6 +305,12 @@ Verification: six DI tests in `test/unit/scanners/scanners.module.spec.ts` cover
 
 ---
 
+## Full-pipeline fixture coverage — Feature 16
+
+`test/integration/project-fixtures.integration.spec.ts` now runs the actual compiled CLI and all four scanners against seven fixture families under `test/fixtures/projects/`, using real Git/npm with no dependency installation. Six valid families cover READY, dirty Git, failing build, failing test, missing environment names and skipped Environment; invalid-project covers missing/malformed manifests before scanners run. Each variant runs independently in local and CI mode (16 checks).
+
+The suite asserts exact complete reports, counts, scores, statuses, gates, exits and separate streams. Script markers prove build-before-test execution, `CI=true`, and continued tests after build failure. Snapshots verify source fixtures stay unchanged and temporary copies differ only by exact repository-owned generated artifacts; Git HEAD, staged diff and porcelain status stay unchanged. All checks passed within the full 376-test suite on macOS / Node 24.21.0 on 2026-10-03. Windows/Linux/minimum Node and installed packaging remain unverified. Scanner behavior is unchanged.
+
 ## Scanner Addition Rule
 
 No fifth scanner may be added in v0.1. A future scanner requires:

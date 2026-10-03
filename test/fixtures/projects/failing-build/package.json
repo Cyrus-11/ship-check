@@ -1,0 +1,9 @@
+{
+  "name": "fixture-failing-build",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node scripts/test.mjs"
+  }
+}

@@ -1,19 +1,26 @@
 # Shipcheck project memory
 
-Updated: 2026-10-02 13:38:20 WAT
-Revision at save: main at 35897b4 (docs: save Feature 12 handoff), in sync with origin/main. **Feature 15 is uncommitted.** Changed: `context/architecture.md`, `context/build-plan.md`, `context/progress-tracker.md`, `test/integration/scan-command.integration.spec.ts`, `test/unit/commands/scan.command.spec.ts`. New: `test/helpers/scanner-result-probe.ts`, `test/unit/common/exit-ownership.spec.ts`. Plus this memory.md. The user has not yet asked to commit or push.
+Updated: 2026-10-03 12:35:59 WAT
+Revision at save: main at 5df2929 (docs: save Feature 15 handoff), matching local origin/main. Features 01–15 are committed; Feature 15 is 08893c8. **Feature 16 is uncommitted.** Changed: `README.md`, `context/build-plan.md`, `context/library-docs.md`, `context/progress-tracker.md`, `context/scanner-registry.md`. New: `test/fixtures/projects/` (40 input files), `test/helpers/project-fixture.ts`, `test/integration/project-fixtures.integration.spec.ts`. Plus this memory.md. No commit or push was requested in this session.
 
 ## Objective and current state
 
 Build Shipcheck v0.1, a NestJS standalone release-readiness CLI for Node.js/TypeScript repositories using npm. Follow [AGENTS.md](AGENTS.md), including the ordered context reading on a new session.
 
-**Features 01–15 are implemented and verified.** 01–14 are committed and pushed; 15 is uncommitted (see above). **Next: Feature 16 Integration Fixture Suite**, then 17 (package/executable smoke test) and 18 (docs and release candidate). Feature 16 has only the brief spec in [build-plan.md](context/build-plan.md); run `/architect` before implementing it. No blocker or open product decision exists.
+**Features 01–16 are implemented and verified.** **Next: Feature 17 Executable and Package Smoke Test**, then 18 (documentation and release candidate). Feature 17 has its brief spec in [build-plan.md](context/build-plan.md); run `/architect` before implementation. No blocker or open product decision exists. v0.1 is not complete.
 
 Scope remains help, version, scan and scan --ci; four sequential scanners (Git, Build, Tests, Environment). No HTTP server, database, frontend, configuration system, additional scanners/package managers/report formats, or public npm publication. Shipcheck-owned operations are read-only; repository-owned build/test scripts may have side effects. Never expose environment values, raw subprocess output, or error stacks in reports.
 
 Plans and evidence: [build-plan.md](context/build-plan.md), [progress-tracker.md](context/progress-tracker.md), [scanner-registry.md](context/scanner-registry.md), [library-docs.md](context/library-docs.md), [architecture.md](context/architecture.md). Local setup: macOS / Node 24.21.0 / npm 11.19.0.
 
 ## Implemented boundaries
+
+- **Fixtures (Feature 16, verification only):** [project-fixtures.integration.spec.ts](test/integration/project-fixtures.integration.spec.ts) runs the actual compiled CLI, without scanner probes, on seven fixture families in [test/fixtures/projects/](test/fixtures/projects/): ready, dirty Git, failing build, failing test, missing env, no example and invalid-project (missing/malformed manifest variants). Each runs in local/CI mode, totaling 16 cases.
+  - Ready and skipped-env → 100 READY, exits 0/0; one failed scanner → 75 REVIEW, exits 0/1; invalid manifests → no report, safe stderr, exits 2/2.
+  - Exact rows/counts/score/status/gate/streams/exits are asserted. Build/test markers prove order, child CI=true, and tests continuing after build failure. Only synthetic values are used; values and raw subprocess sentinels stay out of reports.
+  - [project-fixture.ts](test/helpers/project-fixture.ts) copies fixtures to fresh temporary paths containing spaces, materializes `.env`/`.env.local` from ordinary seed filenames, initializes/commits local Git on main, isolates Git/npm/config/probe/environment settings, and cleans up only its owned temporary root.
+  - File snapshots include ignored files and permit only exact `.generated` build/test artifacts; original bytes and Git HEAD/staged diff/porcelain status stay unchanged. Source fixtures are compared before/after the suite.
+  - No fixture dependencies are installed or network commands executed. Existing `reject-network-listen.ts` rejects listeners only; it is not an outbound network guard or sandbox.
 
 - **Exits (Feature 15, verification only — no production change):** `ScanCommand` awaits `ScanService.scan()` (which awaits `reporter.report()`), then assigns `process.exitCode = selectExitCode(Pick<ScanReport,"gatePassed">, ci)`. The results:
   - Local scans exit 0. CI scans exit 0 for READY and 1 for REVIEW/NOT READY, including a scanner error.
@@ -39,6 +46,10 @@ Plans and evidence: [build-plan.md](context/build-plan.md), [progress-tracker.md
 
 ## Durable decisions and lessons
 
+- Fixture scripts use native ESM `.mjs` and Node built-ins. Environment seed filenames avoid root `.env.*` ignore rules; all 40 fixture input files are visible to Git, currently untracked. Do not create source-fixture `.env` files or run their scripts in place.
+- **npm requires distinct user/global config paths.** The first fixture run failed because npm rejected double-loading one empty file. A direct isolated npm reproduction identified the cause; separate empty files fixed it. Do not reuse one path for both config roles.
+- **Vitest 5.0.1 has no `describe.sequential`.** Use `describe(name, { concurrent: false }, body)`, supported by installed SuiteOptions. The initial compiler failure was corrected using its exported types and official docs.
+
 - **Never run an unprobed `shipcheck scan` from Shipcheck's own repository in tests.** It would run this test suite recursively. Use isolated temporary projects (`withMinimalProject` in [scan-command.integration.spec.ts](test/integration/scan-command.integration.spec.ts): `GIT_CEILING_DIRECTORIES` set to the parent of the realpath, `GIT_DIR`/`GIT_WORK_TREE` unset). Compare printed paths using `realpath` (macOS maps /var to /private/var).
 - **Probe patterns:**
   - [scan-probe.ts](test/helpers/scan-probe.ts) replaces `ScanService.scan`.
@@ -46,7 +57,7 @@ Plans and evidence: [build-plan.md](context/build-plan.md), [progress-tracker.md
   - [scan-orchestration-probe.ts](test/helpers/scan-orchestration-probe.ts) overrides `SCANNERS` in a Nest test module.
   - Probes must import runtime classes from `dist/` so module identities match.
 - Compiled Nest test modules that include ReporterModule must `.overrideProvider(REPORTER_VERSION)`. The production loader can't resolve `package.json` from `.test-dist`; don't weaken that loader.
-- Baseline: Node >=22.12, native ESM, strict TypeScript, NodeNext, runtime `.js` relative imports. Pinned versions: Nest 11.2.5, nest-commander 3.21.0, TypeScript 5.9.3, Vitest 5.0.1, Chalk 4.1.2, Ora 5.4.1, Execa 10.0.1, dotenv 18.0.4. Don't upgrade Nest blindly: nest-commander requires Nest 11. The ES2022 lib lacks Promise.withResolvers typings; use typed deferred Promises in tests.
+- Baseline: Node >=22.12, native ESM, strict TypeScript, NodeNext, runtime `.js` relative imports. Pinned versions: Nest 11.2.5, nest-commander 3.21.0, TypeScript 5.9.3, Vitest 5.0.1, Chalk 4.1.2, Ora 5.4.1, Execa 10.0.1, dotenv 18.0.4. Don't upgrade Nest blindly: the installed discovery dependency requires Nest 11. The ES2022 lib lacks Promise.withResolvers typings; use typed deferred Promises in tests.
 - `npm test` builds `dist` and compiles the tests with tsc into `.test-dist` before Vitest runs. Vitest resets, clears and restores mocks automatically.
 - nest-commander child commands need explicit strictness and throwing parser-exit overrides. A cleanup failure overrides success with exit 2.
 - Under `exactOptionalPropertyTypes`, omit undefined fields. Under `noUncheckedIndexedAccess`, use optional chaining for mock tuples.
@@ -59,28 +70,28 @@ Plans and evidence: [build-plan.md](context/build-plan.md), [progress-tracker.md
 
 ## Verification and limits
 
-Feature 15, 2026-10-02, macOS / Node 24.21.0:
-- Build, test compilation, 64 focused checks, the full **360 tests across 29 files** and `git diff --check` all passed.
-- Manual compiled-CLI runs on a scratch npm/Git project:
-  - clean tree, `--ci` → READY, exit 0
-  - dirty tree, local → exit 0
-  - dirty tree, `--ci` → NOT READY (67), exit 1
+Feature 16, 2026-10-03, macOS / Node 24.21.0 / npm 11.19.0:
+- Production build and test compilation passed.
+- `NO_COLOR=1 npx --no-install vitest run .test-dist/test/integration/project-fixtures.integration.spec.js --maxWorkers=1` passed all 16 cases twice after the harness corrections.
+- `NO_COLOR=1 npm test -- --maxWorkers=4` passed **376 tests across 30 files** (360 existing + 16 fixture cases).
+- Manual compiled CI runs on temporary ready/failing-build fixtures: 100 READY/exit 0 and 75 REVIEW/exit 1; Tests/Environment continued after build failure, stderr empty.
+- Review covered plan alignment, runtime boundaries, setup/cleanup ownership, output safety, mutation accounting and platform limits; no actionable findings.
+- `git diff --check` passed. Separate whitespace checks covered all 42 new files. Git visibility check found all 40 fixture inputs, none ignored. Trailing blank lines in fixture inputs were normalized after test verification; this whitespace-only cleanup was not followed by a test rerun.
+- README, build plan, tracker, scanner registry and library notes now record completion and Feature 17 as next. No production code, dependencies or runtime baseline changed.
+
+Feature 15 previously passed build/test compilation, 64 focused checks and 360 tests across 29 files, plus manual ready/dirty scan exits on macOS. Its exit cases remain passing within the current full gate.
 
 Unverified:
 - minimum Node 22.12
 - Linux
-- Windows for the reporter, orchestration and exit propagation
-- representative fixtures (Feature 16)
+- Windows for reporter, orchestration, exit propagation and Feature 16 fixtures
 - installed packaging (Feature 17)
 
-There is no global npm link. v0.1 is not complete.
+There is no global npm link. Public npm publication remains outside scope.
 
 ## Next steps
 
-1. If the user asks, commit and push Feature 15. Suggested message: `test: verify CI exit enforcement`, ending with the required Co-Authored-By line.
-2. Run `/architect` for Feature 16: seven fixtures (ready, dirty Git, failing build, failing test, missing env, no `.env.example`, invalid/non-Node directory).
-   - Copy committed fixtures into temporary directories and initialize Git inside each copy.
-   - Use no network.
-   - Check for mutation while allowing for build/test script output.
-   - Consider extracting `runCli`/`withMinimalProject` from the scan-command spec into a shared helper.
-3. Then Features 17 and 18.
+1. If separately requested, commit/push Feature 16 and the handoff. This save request does not authorize Git publication.
+2. Run `/architect` for Feature 17, inspecting the current bin/files/private metadata, package-version loading, compiled layout and installed npm launcher behavior. Keep its plan in `context/build-plan.md`.
+3. Feature 17 must build from source, run `npm pack --dry-run`, inspect package contents, install/link locally in an owned temporary directory, and invoke help/version/local scan/CI scan through the executable name from a target project's cwd. Reuse fixture setup without scanning Shipcheck's own repository. No public npm publication.
+4. Then Feature 18: final README usage/output, context consistency review and complete release-candidate verification. Retain honest platform limits; do not mark v0.1 complete before required packaging checks pass.
