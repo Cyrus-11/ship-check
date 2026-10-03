@@ -1,7 +1,7 @@
 # Shipcheck project memory
 
-Updated: 2026-10-03 12:35:59 WAT
-Revision at save: main at 5df2929 (docs: save Feature 15 handoff), matching local origin/main. Features 01–15 are committed; Feature 15 is 08893c8. **Feature 16 is uncommitted.** Changed: `README.md`, `context/build-plan.md`, `context/library-docs.md`, `context/progress-tracker.md`, `context/scanner-registry.md`. New: `test/fixtures/projects/` (40 input files), `test/helpers/project-fixture.ts`, `test/integration/project-fixtures.integration.spec.ts`. Plus this memory.md. No commit or push was requested in this session.
+Updated: 2026-10-03 12:51:49 WAT
+Revision at save: main at 974fc86 (test: add full-pipeline integration fixtures), matching local origin/main. **Features 01–16 are committed.** The working tree was clean before this save; this memory refresh is the only new uncommitted change. Feature 15 is 08893c8; Feature 16 is 974fc86. No commit or push was performed by this save.
 
 ## Objective and current state
 
@@ -46,7 +46,7 @@ Plans and evidence: [build-plan.md](context/build-plan.md), [progress-tracker.md
 
 ## Durable decisions and lessons
 
-- Fixture scripts use native ESM `.mjs` and Node built-ins. Environment seed filenames avoid root `.env.*` ignore rules; all 40 fixture input files are visible to Git, currently untracked. Do not create source-fixture `.env` files or run their scripts in place.
+- Fixture scripts use native ESM `.mjs` and Node built-ins. Environment seed filenames avoid root `.env.*` ignore rules; all 40 fixture input files are tracked in Git. Do not create source-fixture `.env` files or run their scripts in place.
 - **npm requires distinct user/global config paths.** The first fixture run failed because npm rejected double-loading one empty file. A direct isolated npm reproduction identified the cause; separate empty files fixed it. Do not reuse one path for both config roles.
 - **Vitest 5.0.1 has no `describe.sequential`.** Use `describe(name, { concurrent: false }, body)`, supported by installed SuiteOptions. The initial compiler failure was corrected using its exported types and official docs.
 
@@ -91,7 +91,6 @@ There is no global npm link. Public npm publication remains outside scope.
 
 ## Next steps
 
-1. If separately requested, commit/push Feature 16 and the handoff. This save request does not authorize Git publication.
-2. Run `/architect` for Feature 17, inspecting the current bin/files/private metadata, package-version loading, compiled layout and installed npm launcher behavior. Keep its plan in `context/build-plan.md`.
-3. Feature 17 must build from source, run `npm pack --dry-run`, inspect package contents, install/link locally in an owned temporary directory, and invoke help/version/local scan/CI scan through the executable name from a target project's cwd. Reuse fixture setup without scanning Shipcheck's own repository. No public npm publication.
-4. Then Feature 18: final README usage/output, context consistency review and complete release-candidate verification. Retain honest platform limits; do not mark v0.1 complete before required packaging checks pass.
+1. Run `/architect` for Feature 17, inspecting the current bin/files/private metadata, package-version loading, compiled layout and installed npm launcher behavior. Keep its plan in `context/build-plan.md`.
+2. Feature 17 must build from source, run `npm pack --dry-run`, inspect package contents, install/link locally in an owned temporary directory, and invoke help/version/local scan/CI scan through the executable name from a target project's cwd. Reuse fixture setup without scanning Shipcheck's own repository. No public npm publication.
+3. Then Feature 18: final README usage/output, context consistency review and complete release-candidate verification. Retain honest platform limits; do not mark v0.1 complete before required packaging checks pass.
