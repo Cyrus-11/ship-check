@@ -42,7 +42,7 @@ export async function snapshotFiles(directory: string): Promise<FileSnapshot> {
   return entries;
 }
 
-function isolatedEnvironment(root: string, directory: string): NodeJS.ProcessEnv {
+export function isolatedEnvironment(root: string, directory: string): NodeJS.ProcessEnv {
   const env = { ...process.env };
   // Remove inherited tool configuration case-insensitively, including on Windows.
   for (const key of Object.keys(env)) {

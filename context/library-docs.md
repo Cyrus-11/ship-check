@@ -543,6 +543,16 @@ shipcheck --help
 
 For a repeatable packaging smoke test, prefer `npm pack --dry-run` and inspect the file list. Do not publish from the implementation workflow.
 
+### Feature 17 installed-package verification — 2026-10-04
+
+Read installed npm 11.19.0 bundled pack/ci/package-json docs and Execa 10.0.1 exported options, alongside the versioned [Execa Windows docs](https://github.com/sindresorhus/execa/blob/v10.0.1/docs/windows.md) and [API](https://github.com/sindresorhus/execa/blob/v10.0.1/docs/api.md). No relevant library-specific installed skill or documentation MCP was advertised. npm includes package.json automatically; the `files` allowlist now selects production JS, README and LICENSE, excluding declaration/source maps. No dependencies, engine requirement or install hook changed; the existing lockfile root metadata needs no change for files/scripts.
+
+`test/helpers/package-smoke.ts` is a standalone compiled development runner, outside the normal Vitest suite. It uses separate executable/argument arrays, explicit cwd/env, `extendEnv:false`, `preferLocal:false`, `shell:false`, captured streams, bounded buffers/timeouts and safe stage-only errors (with an allowlisted npm error code). `--prepare` permits network access only for initial temporary consumer/cache preparation; the actual clean reinstall uses `npm ci --offline`. `--cache` copies a caller-supplied complete cache and keeps both installation phases offline. Distinct empty npm user/global configs avoid the Feature 16 config collision. Dependency scripts are disabled. All temporary roots are owned and cleaned in finally; the runner also cleans only the checkout's fixed generated dist path before rebuilding.
+
+The runner places the installed consumer's bin directory first on PATH. POSIX asserts the npm symlink target and executable access; Windows checks the generated shipcheck.cmd and relies on Execa's documented batch invocation handling, without changing ProcessRunner's runtime executable allowlist. Native launcher execution uses no probes, checkout modules or Node entry bypass. Installed files match dry-run/real pack lists and original bytes. npm ls checks runtime dependency completeness; real help/version/scans exercise Nest provider injection and package-relative version imports.
+
+Initial sandbox preparation failed with ENOTFOUND; the same command with registry permission passed. macOS / Node 24.21.0 / npm 11.19.0: 51 distributed files, offline reinstall, help/version outside a project, target-manifest version independence, READY local/CI 0, failed-build REVIEW local 0/CI 1, invalid usage and missing manifest 2, exact safe streams, script artifacts and preserved Git/fixture state. Windows/Linux/minimum Node remain unverified. npm's installed bin fixup supplies executable permissions; no source chmod step is needed on this verified host.
+
 ### Rules
 
 - Package version is the single version source

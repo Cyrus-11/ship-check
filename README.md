@@ -4,7 +4,7 @@ Shipcheck is a local-first release-readiness CLI for Node.js and TypeScript repo
 
 ## Current status
 
-**Features 01–16 are complete.** The CLI foundation, shared domain contracts, infrastructure adapters, project discovery, all four scanners, their ordered registry, scan orchestration, readiness scoring, terminal reporter, CI exit verification, and full-pipeline fixtures are implemented and tested. v0.1 is not yet complete: packaging checks and release-candidate documentation remain.
+**Features 01–17 are complete.** The CLI foundation, shared domain contracts, infrastructure adapters, project discovery, all four scanners, their ordered registry, scan orchestration, readiness scoring, terminal reporter, CI exit verification, full-pipeline fixtures, and installed-package smoke check are implemented and tested. Release-candidate documentation remains before v0.1 is complete.
 
 The `scan` command discovers the target project by reading `<cwd>/package.json` without searching parent directories. It then runs the four scanners one at a time in Git → Build → Tests → Environment order, scores the results, and prints one report to stdout. A scanner that fails or throws unexpectedly is recorded as a result and the remaining scanners still run. A completed local scan exits `0`; `scan --ci` exits `0` only when the release gate passes and `1` otherwise. A missing, unreadable, or invalid `package.json` exits `2`. Only the boolean `--ci` option is accepted; custom paths and flag values are unsupported.
 
@@ -24,8 +24,9 @@ The `scan` command discovers the target project by reading `<cwd>/package.json` 
 | Terminal reporter (14) | Prints the report with canonical symbols and labels, shows local progress in interactive terminals, and disables color/animation in CI, non-TTY output, and with `NO_COLOR` |
 | CI exit enforcement (15) | Verifies complete reports and local/CI gate exits, safe fatal failures, cleanup and command ownership of exit decisions |
 | Integration fixtures (16) | Exercises the real compiled CLI with seven isolated project families, exact reports/exits and explicit build/test artifact checks |
+| Executable packaging (17) | Checks tarball contents, offline clean installation and npm-generated launchers from unrelated working directories |
 
-**Next: Feature 17 — Executable and Package Smoke Test.** Release-candidate documentation follows. See the [progress tracker](context/progress-tracker.md) and [build plan](context/build-plan.md).
+**Next: Feature 18 — Documentation and v0.1 Release Candidate.** See the [progress tracker](context/progress-tracker.md) and [build plan](context/build-plan.md).
 
 ## Readiness scoring
 
@@ -78,7 +79,27 @@ Project discovery and all four scanners have unit and integration coverage using
 
 The full-pipeline fixture suite runs real Git/npm commands on fresh temporary copies of seven project families in both local and CI modes. It covers ready, dirty Git, failing build/test, missing environment, skipped environment and missing/malformed manifests, checks exact reports and exits, and permits only the expected repository-owned build/test artifacts. The fixtures have no dependencies or network operations.
 
-**Last verified:** production/test compilation and **376 tests across 30 files passed** on macOS with Node 24.21.0 (2026-10-03). Earlier features were also verified on Windows with Node 24.16.0. Minimum Node 22.12, Linux, the reporter/orchestration/fixture suite on Windows, and installed Shipcheck packaging remain unverified.
+**Last verified:** production/test compilation and **376 tests across 30 files passed** on macOS with Node 24.21.0 (2026-10-04). The installed-package check passed on macOS / Node 24.21.0 / npm 11.19.0 on 2026-10-04. Earlier features were also verified on Windows with Node 24.16.0. Minimum Node 22.12, Linux, and the reporter/orchestration/fixture/installed-package checks on Windows remain unverified.
+
+## Installed-package smoke check
+
+From the checkout root, with development dependencies installed:
+
+```bash
+npm run test:package -- --prepare
+```
+
+This dedicated check compiles its helper, cleans and rebuilds `dist`, checks `npm pack --dry-run`, creates a real tarball and installs it in an owned temporary consumer. `--prepare` permits registry access to fill a fresh temporary npm cache with runtime dependencies. It then removes that installation and verifies a clean `npm ci --offline`. Dependency lifecycle scripts, audit and funding requests are disabled. The ordinary `npm test` suite does not run this preparation or require registry access.
+
+To run entirely offline using an already complete npm cache, supply its absolute path:
+
+```bash
+npm run test:package -- --cache /absolute/path/to/prepared/npm-cache
+```
+
+The cache is copied into the temporary workspace; an incomplete cache fails the check rather than skipping installation. Both modes invoke the installed `shipcheck` executable from directories outside the checkout for help/version, READY and failed-build local/CI scans, and fatal usage/discovery errors. They check exact reports/exits and fixture contents, permit only the scripts' expected generated files, and remove their temporary workspace afterward. No global installation, link or publication occurs. Run this check separately from other builds/tests because it rebuilds `dist`.
+
+Distribution contains production `.js` files, package metadata, README and license; declarations, source maps, tests and project context are excluded. Keep `private: true`; local tarball installation works without publishing.
 
 On Windows, the process adapter supports native `.exe`/`.com` commands and the installed `npm.cmd` launcher. Shipcheck passes executable and arguments separately with `shell: false`; Execa handles npm's internal Windows shell launcher. The process-tree tests need permission to run Windows `taskkill`. Restricted sandboxes can prevent descendant cleanup; termination is best-effort and may exceed the configured timeout. See [library notes](context/library-docs.md) for details and supported-launcher limitations.
 
@@ -88,7 +109,7 @@ v0.1 will expose help, version, `scan`, and `scan --ci`, with exactly four seque
 
 Shipcheck-owned operations are read-only. A scan runs the project's own build and test scripts, which execute repository-owned code and may generate files or perform other side effects. Scanning is not a sandbox; use trusted repositories.
 
-Public npm publication is outside the current implementation scope. The package is marked private while local executable packaging is developed.
+Public npm publication is outside the current implementation scope. The package remains marked private.
 
 ## License
 

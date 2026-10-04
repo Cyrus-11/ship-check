@@ -24,7 +24,7 @@ describe("project scaffold", (): void => {
       private: true,
       bin: { shipcheck: "./dist/main.js" },
       engines: { node: ">=22.12.0" },
-      files: ["dist", "README.md", "LICENSE"],
+      files: ["dist/**/*.js", "README.md", "LICENSE"],
     });
   });
 

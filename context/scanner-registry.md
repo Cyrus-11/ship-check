@@ -307,6 +307,8 @@ Verification: six DI tests in `test/unit/scanners/scanners.module.spec.ts` cover
 
 ## Full-pipeline fixture coverage — Feature 16
 
+**Installed-package coverage — Feature 17 (2026-10-04):** `test/helpers/package-smoke.ts` invokes npm-installed Shipcheck against fresh ready/failing-build fixtures in local and CI mode. Exact scanner rows, scores, gates and exits pass, including Tests/Environment continuing after build failure. Snapshots allow only exact script artifacts; source fixtures and Git state stay unchanged. Passed on macOS / Node 24.21.0 / npm 11.19.0; Windows/Linux/minimum Node remain unverified. Scanner implementations, order and weights are unchanged.
+
 `test/integration/project-fixtures.integration.spec.ts` now runs the actual compiled CLI and all four scanners against seven fixture families under `test/fixtures/projects/`, using real Git/npm with no dependency installation. Six valid families cover READY, dirty Git, failing build, failing test, missing environment names and skipped Environment; invalid-project covers missing/malformed manifests before scanners run. Each variant runs independently in local and CI mode (16 checks).
 
 The suite asserts exact complete reports, counts, scores, statuses, gates, exits and separate streams. Script markers prove build-before-test execution, `CI=true`, and continued tests after build failure. Snapshots verify source fixtures stay unchanged and temporary copies differ only by exact repository-owned generated artifacts; Git HEAD, staged diff and porcelain status stay unchanged. All checks passed within the full 376-test suite on macOS / Node 24.21.0 on 2026-10-03. Windows/Linux/minimum Node and installed packaging remain unverified. Scanner behavior is unchanged.
