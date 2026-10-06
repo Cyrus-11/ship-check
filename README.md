@@ -1,62 +1,142 @@
 # Shipcheck
 
-Shipcheck is a local-first release-readiness CLI for Node.js and TypeScript repositories using npm. A scan checks Git state, build, tests, and required environment-variable names, then reports a readiness score and release decision.
+Shipcheck v0.1 is a local-first release-readiness CLI for Node.js and TypeScript repositories using npm. It checks Git, build, tests, and required environment-variable names, then reports a score and release decision.
 
-## Current status
+## Installation
 
-**Features 01–17 are complete.** The CLI foundation, shared domain contracts, infrastructure adapters, project discovery, all four scanners, their ordered registry, scan orchestration, readiness scoring, terminal reporter, CI exit verification, full-pipeline fixtures, and installed-package smoke check are implemented and tested. Release-candidate documentation remains before v0.1 is complete.
+Requires Node.js 22.12+, npm and Git on PATH. Install the target project's dependencies before scanning. Shipcheck is private and has not been published to npm; install from a checkout or its local tarball.
 
-The `scan` command discovers the target project by reading `<cwd>/package.json` without searching parent directories. It then runs the four scanners one at a time in Git → Build → Tests → Environment order, scores the results, and prints one report to stdout. A scanner that fails or throws unexpectedly is recorded as a result and the remaining scanners still run. A completed local scan exits `0`; `scan --ci` exits `0` only when the release gate passes and `1` otherwise. A missing, unreadable, or invalid `package.json` exits `2`. Only the boolean `--ci` option is accepted; custom paths and flag values are unsupported.
+From the Shipcheck checkout:
 
-| Completed area | What is available |
+```sh
+npm ci
+npm run build
+npm pack --dry-run
+npm pack
+```
+
+The tarball is `shipcheck-0.1.0.tgz`. To install it in a separate tools directory with its own `package.json` (replace the absolute path with your checkout):
+
+```sh
+npm install --ignore-scripts --no-audit --no-fund /absolute/path/to/ship-check/shipcheck-0.1.0.tgz
+```
+
+Add that tools directory's `node_modules/.bin` to PATH. On POSIX shells:
+
+```sh
+export PATH="/absolute/path/to/tools/node_modules/.bin:$PATH"
+```
+
+On PowerShell:
+
+```powershell
+$env:Path = "C:\absolute\path\to\tools\node_modules\.bin;$env:Path"
+```
+
+Installing in a separate directory avoids adding Shipcheck to the scanned project's manifest. Runtime dependencies may require npm registry access during installation. Tarball installation follows [npm's local-package installation rules](https://docs.npmjs.com/cli/v11/commands/npm-install/).
+
+### Local development link
+
+After installing dependencies and building in the checkout, create a link under a dedicated, writable npm prefix (replace the example path):
+
+On POSIX shells:
+
+```sh
+NPM_CONFIG_PREFIX=/absolute/path/to/local-prefix npm link --ignore-scripts --no-audit --no-fund
+```
+
+On PowerShell, set the prefix for the link command and then remove the override:
+
+```powershell
+$env:NPM_CONFIG_PREFIX = 'C:\absolute\path\to\local-prefix'
+npm link --ignore-scripts --no-audit --no-fund
+Remove-Item Env:NPM_CONFIG_PREFIX
+```
+
+Add `/absolute/path/to/local-prefix/bin` to PATH on POSIX. On Windows, add the prefix directory itself to PATH, where npm places `shipcheck.cmd`. The link points at the checkout; rebuild after source changes. This uses [npm's prefix and executable linking behavior](https://docs.npmjs.com/cli/v11/commands/npm-link/) without needing a second link inside the scanned project.
+
+## Usage
+
+Run these commands from the root of a trusted target project, where `package.json` is located:
+
+```sh
+shipcheck --help
+shipcheck --version
+shipcheck scan
+shipcheck scan --ci
+```
+
+Help and version also work outside a project. `shipcheck scan --help` shows scan help. Discovery reads only `<cwd>/package.json`; it does not search parent directories. Custom paths, option values such as `--ci=true`, and configuration files are unsupported. Ambient `CI` does not enable gate enforcement; pass `--ci` explicitly.
+
+**Trust:** Shipcheck-owned operations do not modify the scanned repository. Build and test scripts execute repository-owned code and may generate files or perform other side effects. Scanning is not a sandbox; use trusted repositories.
+
+## Checks and scoring
+
+Scanners run sequentially in this fixed order. A failed check or unexpected scanner error does not prevent later scanners from running.
+
+| Scanner | Release condition |
 | --- | --- |
-| CLI foundation (01–03) | TypeScript/native ESM setup, NestJS standalone bootstrap, help/version, strict option parsing, the scan command, and application cleanup |
-| Domain contracts (04) | Shared scanner/context/report types, fixed scanner order, 25-point weights, and readiness thresholds |
-| Infrastructure adapters (05) | Process execution with timeouts, bounded output and operational errors; read-only filesystem access; monotonic timing; injectable providers |
-| Project discovery (06) | Resolves the working directory once, validates `<cwd>/package.json`, narrows it to a supported subset with a directory-name fallback, and builds the scan context; discovery failures exit `2` with safe messages |
-| Git scanner (07) | Read-only `git rev-parse`/`branch`/`status` checks that classify a clean, dirty, or non-repository work tree with a branch name and changed-file count only — no file paths are reported |
-| Build scanner (08) | Evaluates `npm run build`; missing scripts, non-zero exits, timeouts, and output-limit failures fail the check; operational errors are reported separately |
-| Test scanner (09) | Evaluates `npm test` with `CI=true` in the child environment, preserving the parent environment and using the same failure policy as Build |
-| Environment scanner (10) | Parses required names from `.env.example`, checks for non-empty values across `.env`, `.env.local`, and the process environment, and returns missing names only; a missing example skips the check |
-| Scanner registry (11) | Exports the four scanner instances in fixed Git → Build → Tests → Environment order |
-| Scan orchestration (12) | Runs the registry sequentially, turns an unexpected scanner throw into a safe `error` result, scores once, awaits the report, and returns it to the command |
-| Scoring service (13) | Calculates the readiness score, status, and release-gate decision from completed results; excludes skipped checks and uses the shared thresholds |
-| Terminal reporter (14) | Prints the report with canonical symbols and labels, shows local progress in interactive terminals, and disables color/animation in CI, non-TTY output, and with `NO_COLOR` |
-| CI exit enforcement (15) | Verifies complete reports and local/CI gate exits, safe fatal failures, cleanup and command ownership of exit decisions |
-| Integration fixtures (16) | Exercises the real compiled CLI with seven isolated project families, exact reports/exits and explicit build/test artifact checks |
-| Executable packaging (17) | Checks tarball contents, offline clean installation and npm-generated launchers from unrelated working directories |
+| Git | Inside a Git work tree with no staged, unstaged or untracked changes. A detached HEAD alone does not fail. Only branch and changed-file count are reported. |
+| Build | A non-empty `scripts.build` exists and `npm run build` exits 0. |
+| Tests | A non-empty `scripts.test` exists and `npm test` exits 0. The child receives `CI=true`; the parent environment is unchanged. No framework-specific flags are added. |
+| Environment | Every name parsed from `.env.example` has a non-whitespace value in the process environment, `.env` or `.env.local`. Presence in any source is sufficient. No example file skips this check; an empty example passes. |
 
-**Next: Feature 18 — Documentation and v0.1 Release Candidate.** See the [progress tracker](context/progress-tracker.md) and [build plan](context/build-plan.md).
+Each scanner carries 25 points. Passed checks earn their weight; failed checks and operational errors earn zero. Skipped checks are excluded from the denominator. The percentage is rounded once to the nearest integer. Three passes and one failure score 75; three passes and one skipped check score 100.
 
-## Readiness scoring
-
-The implemented scoring service assigns points from scanner results. Each of the four scanners carries 25 points. Passed checks earn their weight; failed checks and operational errors earn zero. Skipped checks are excluded from the total applicable weight. The final percentage is rounded once to the nearest integer.
-
-| Score | Status | Release gate |
+| Score | Displayed status | Release gate |
 | --- | --- | --- |
-| 90–100 | `READY` | Pass |
-| 70–89 | `REVIEW` | Fail |
-| 0–69 | `NOT_READY` | Fail |
+| 90–100 | `READY` | PASSED |
+| 70–89 | `REVIEW` | FAILED |
+| 0–69 | `NOT READY` | FAILED |
 
-For example, three passes and one failure produce `75 / REVIEW`, while three passes and one skipped check produce `100 / READY`. Empty or entirely skipped results produce `0 / NOT_READY`. The report displays `NOT_READY` as `NOT READY`.
+Missing build/test scripts fail. Build/test nonzero exits, timeouts and output-limit failures fail; unavailable executables and unexpected adapter failures are operational errors. Git has a 10-second timeout; build and tests each have 120 seconds. Process termination is best-effort and is not a hard wall-clock deadline.
 
-## Current commands
+Environment validation checks presence only, not credential validity or production suitability. Values, raw subprocess output and error stacks are never included in reports. Missing names are sorted; the reporter shows up to five, with an overflow count for the rest.
 
-After building, run the compiled entry point:
+## Example report
 
-| Command | Current behavior | Exit code |
+This plain report matches the canonical REVIEW snapshot:
+
+```text
+Shipcheck v0.1.0
+
+Project: example-service
+Path: /workspace/example-service
+
+✓ Git          Working tree is clean (main)
+✓ Build        npm run build passed
+✓ Tests        npm test passed
+✗ Environment  Missing 2 required variables
+  - DATABASE_URL
+  - REDIS_URL
+
+Checks: 3 passed, 1 failed, 0 skipped
+Release score: 75/100
+Status: REVIEW
+Release gate: FAILED
+```
+
+Completed reports go to stdout. Fatal errors go to stderr. Local interactive terminals show progress and color; `--ci`, non-TTY output and `NO_COLOR` disable both. Terminal text is sanitized; missing-name detail lines are limited to 160 Unicode code points.
+
+## Exit codes
+
+| Outcome | Local scan | `scan --ci` |
 | --- | --- | --- |
-| `node dist/main.js --help` | Show CLI help | `0` |
-| `node dist/main.js --version` | Show the version from package metadata | `0` |
-| `node dist/main.js scan --help` | Show scan options | `0` |
-| `node dist/main.js scan` | Scan the current project and print the readiness report | `0` |
-| `node dist/main.js scan --ci` | Same scan without color or progress; enforces the release gate | `0` if the gate passes, otherwise `1` |
+| Completed, READY | 0 | 0 |
+| Completed, REVIEW or NOT READY (including scanner errors) | 0 | 1 |
+| Invalid usage, project discovery, bootstrap, report or cleanup failure | 2 | 2 |
 
-Invalid commands, unsupported options, and positional project paths exit `2`, as do project-discovery failures (a missing, unreadable, or invalid `package.json`). Help/version finish application cleanup before exiting.
+Help/version exit 0. Local completion does not mean the release gate passed; read the report. A missing, unreadable or invalid `package.json` prevents a scan report and exits 2. Output and application cleanup finish before normal command exit.
 
-## Development
+## v0.1 limitations
 
-The runtime baseline is Node.js 22.12+. For development and tests, use Node 22.12+ on the 22.x line or Node 24.x with npm; these versions satisfy the selected Vitest release's engine range.
+Only help, version, `scan` and `scan --ci` are supported. There are no custom scanner selections, parallel scans, extra package managers or languages, lint/coverage/security checks, configuration files, additional report formats, automatic fixes, plugins, accounts, telemetry or remote services. Public npm publication is outside this implementation scope.
+
+The v0.1 release candidate is verified on macOS with Node 24.21.0 / npm 11.19.0. Earlier features were tested on Windows with Node 24.16.0; final Windows reporting, orchestration, fixtures and installed packaging, Linux, and minimum Node 22.12 remain unverified. These are verification limits, not evidence of cross-platform success.
+
+## Development and verification
+
+From the checkout root, use Node 22.12+ on the 22.x line or Node 24.x, supported by the pinned Vitest release:
 
 ```sh
 npm ci
@@ -64,22 +144,14 @@ npm run build
 node dist/main.js --help
 node dist/main.js --version
 node dist/main.js scan --help
-npm test
+npm test -- --maxWorkers=4
 ```
 
-For the full suite with reduced subprocess contention, use `npm test -- --maxWorkers=4`. The latest verification also set `NO_COLOR=1` (PowerShell: `$env:NO_COLOR = '1'`; POSIX shells: `NO_COLOR=1 npm test -- --maxWorkers=4`).
+`npm run dev` watches and recompiles source; invoke the compiled entry point separately. Do not scan Shipcheck's checkout as a test: its test script would run the suite recursively. Use isolated target projects.
 
-`npm run dev` watches and recompiles application source. Run the compiled entry point separately after a successful build.
+`npm test` builds production code and compiles tests with `tsc` before Vitest runs `.test-dist`, preserving Nest constructor metadata. The 376-test suite covers providers, adapters, scanners, scoring, canonical reporter snapshots, lifecycle/error/exit behavior, and 16 full-pipeline fixture cases. Fixtures use real Git/npm in temporary copies, assert exact safe reports and exits, and check original files and Git state while allowing only expected build/test artifacts. No fixture scripts run in source directories.
 
-`npm test` first builds production code and compiles the tests with `tsc`, then runs Vitest against `.test-dist/`. This preserves Nest constructor metadata in both builds. Production output in `dist/` contains no tests.
-
-The suite covers CLI help/version, strict usage, local/CI option forwarding and exits, asynchronous cleanup, safe errors, domain contracts, and dependency injection. Adapter tests cover real subprocess output/exits, timeouts, byte limits, environment preservation, filesystem reads, and npm execution from paths containing spaces. Native subprocess probes verify production modules and preserve JSON import attributes in metadata-loader tests.
-
-Project discovery and all four scanners have unit and integration coverage using isolated temporary projects. Registry tests verify order, weights, singleton identity, and provider exports. The scoring service adds 23 checks for result combinations, skipped/error weights, threshold and rounding boundaries, immutable inputs, independent calculations, and module export injection. Reporter tests compare canonical text snapshots and cover detail limits, control-character stripping, color/progress policy, and awaited writes. Orchestration tests cover sequential execution, throw isolation, scoring/reporting order, and fatal failures. They also run the compiled CLI against a minimal temporary project. No test scans Shipcheck's own repository, which would run its test suite recursively.
-
-The full-pipeline fixture suite runs real Git/npm commands on fresh temporary copies of seven project families in both local and CI modes. It covers ready, dirty Git, failing build/test, missing environment, skipped environment and missing/malformed manifests, checks exact reports and exits, and permits only the expected repository-owned build/test artifacts. The fixtures have no dependencies or network operations.
-
-**Last verified:** production/test compilation and **376 tests across 30 files passed** on macOS with Node 24.21.0 (2026-10-04). The installed-package check passed on macOS / Node 24.21.0 / npm 11.19.0 on 2026-10-04. Earlier features were also verified on Windows with Node 24.16.0. Minimum Node 22.12, Linux, and the reporter/orchestration/fixture/installed-package checks on Windows remain unverified.
+For plain test output, set `NO_COLOR=1` (PowerShell: `$env:NO_COLOR = '1'`; POSIX: `NO_COLOR=1 npm test -- --maxWorkers=4`). See the [progress tracker](context/progress-tracker.md) and [build plan](context/build-plan.md) in the source checkout for verification evidence and release criteria; project context is excluded from the tarball.
 
 ## Installed-package smoke check
 
@@ -102,14 +174,6 @@ The cache is copied into the temporary workspace; an incomplete cache fails the 
 Distribution contains production `.js` files, package metadata, README and license; declarations, source maps, tests and project context are excluded. Keep `private: true`; local tarball installation works without publishing.
 
 On Windows, the process adapter supports native `.exe`/`.com` commands and the installed `npm.cmd` launcher. Shipcheck passes executable and arguments separately with `shell: false`; Execa handles npm's internal Windows shell launcher. The process-tree tests need permission to run Windows `taskkill`. Restricted sandboxes can prevent descendant cleanup; termination is best-effort and may exceed the configured timeout. See [library notes](context/library-docs.md) for details and supported-launcher limitations.
-
-## Scope and trust
-
-v0.1 will expose help, version, `scan`, and `scan --ci`, with exactly four sequential scanners: Git, Build, Tests, Environment. It uses in-memory state and has no HTTP server, database, or account requirement.
-
-Shipcheck-owned operations are read-only. A scan runs the project's own build and test scripts, which execute repository-owned code and may generate files or perform other side effects. Scanning is not a sandbox; use trusted repositories.
-
-Public npm publication is outside the current implementation scope. The package remains marked private.
 
 ## License
 

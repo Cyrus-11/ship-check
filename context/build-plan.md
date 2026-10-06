@@ -1153,6 +1153,10 @@ Verify Shipcheck behaves like an installable developer tool.
 
 ### 18 Documentation and v0.1 Release Candidate
 
+**Status:** Implemented and verified on 2026-10-05. All 18 features are complete for the local v0.1 release candidate. Current completion evidence is in `progress-tracker.md`; earlier feature sections retain their historical sequencing and verification limits.
+
+Completed README installation/local-link instructions, usage/trust policy, four scanners, scoring, exit table, exact REVIEW snapshot and limitations. Reconciled the project overview example and current tracker state. Production/test compilation, all 376 tests across 30 files (including fixtures), installed-package smoke (51 files, offline clean reinstall, actual launcher/exits) and temporary-prefix link smoke passed on macOS / Node 24.21.0 / npm 11.19.0. README and overview examples match the canonical snapshot byte-for-byte. Review found no actionable findings; registry remains four scanners with unchanged behavior/weights. Final Windows/Linux/minimum Node 22.12 and PowerShell verification remain unverified. Public publication is outside scope.
+
 Finish documentation only after behavior is verified.
 
 **Implementation:**

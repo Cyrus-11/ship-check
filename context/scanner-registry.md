@@ -305,6 +305,10 @@ Verification: six DI tests in `test/unit/scanners/scanners.module.spec.ts` cover
 
 ---
 
+## Release-candidate verification — Feature 18
+
+On 2026-10-05, verified all four entries against implementations and the explicit ordered provider. No behavior, ID, name, order or weight changed. Production/test compilation and all 376 tests across 30 files passed, including full-pipeline fixtures; installed-package smoke passed on macOS / Node 24.21.0 / npm 11.19.0. Latest local evidence supersedes historical pending packaging notes below; final Windows/Linux/minimum Node checks remain unverified.
+
 ## Full-pipeline fixture coverage — Feature 16
 
 **Installed-package coverage — Feature 17 (2026-10-04):** `test/helpers/package-smoke.ts` invokes npm-installed Shipcheck against fresh ready/failing-build fixtures in local and CI mode. Exact scanner rows, scores, gates and exits pass, including Tests/Environment continuing after build failure. Snapshots allow only exact script artifacts; source fixtures and Git state stay unchanged. Passed on macOS / Node 24.21.0 / npm 11.19.0; Windows/Linux/minimum Node remain unverified. Scanner implementations, order and weights are unchanged.

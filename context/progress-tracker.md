@@ -8,15 +8,19 @@ Update this file after every completed feature. Any engineer or AI agent reading
 
 **Version:** v0.1.0
 
-**Phase:** Phase 5 — Verification and Packaging
+**Phase:** v0.1 Release Candidate — implementation complete
 
 **In progress:** None
 
-**Last completed:** 17 Executable and Package Smoke Test
+**Last completed:** 18 Documentation and v0.1 Release Candidate
 
-**Next:** 18 Documentation and v0.1 Release Candidate
+**Next:** No remaining v0.1 implementation features. Cross-platform and minimum-Node verification remain follow-up work; public npm publication is outside scope.
 
-**Feature 17 — 2026-10-04:** Implemented `test/helpers/package-smoke.ts` and dedicated `test:package`. Fresh source build, dry-run/real pack, 51-file JS distribution plus metadata/README/LICENSE, temporary tarball installation, npm ls, offline clean reinstall and actual npm launcher assertions passed on macOS / Node 24.21.0 / npm 11.19.0. Help/version work outside the checkout and ignore target version; READY local/CI exits 0/0; failed-build REVIEW exits 0/1 with later scanners passing; usage/missing manifest exit 2. Exact safe streams and fixture/Git preservation passed. Incomplete offline cache returns 1/ENOTCACHED with no registry fallback. `--prepare` permits initial cache population; verified reinstall is offline. Initial sandbox ENOTFOUND was resolved with registry permission. npm supplies installed executable permissions. Production/test compilation and all 376 tests across 30 files passed. No dependency, lockfile, engine or scanner changes, global link or publication. Windows/Linux/minimum Node remain unverified. Feature 18 is next; uncommitted.
+**Feature 18 — 2026-10-05:** Completed README tarball installation and local development-link instructions, usage, four scanners, scoring, exits, trust/side-effect statement and v0.1 limitations. README and project overview now use the exact canonical REVIEW snapshot. Production/test compilation and all 376 tests across 30 files passed, including the 16 full-pipeline fixtures. Installed-package smoke passed with 51 files, dependency-cache preparation followed by offline clean reinstall, installed help/version, READY/REVIEW local/CI and safe fatal exits. Temporary-prefix npm link and linked help/version/scan help/READY local+CI passed; compiled help/version/scan help and byte-exact documentation examples passed. Final context and scoped review found no actionable findings. Scanner order/weights/behavior remain unchanged; no runtime, dependency, lockfile or public-surface changes. Verified on macOS / Node 24.21.0 / npm 11.19.0 only; final Windows/Linux and Node 22.12 verification remain explicit limits. Feature 18 changes are uncommitted.
+
+Current status above supersedes historical next-feature, uncommitted and verification-limit notes in older entries. Features 01–17 are committed at `7d11ac7`; memory.md is an older handoff and is not the current progress source.
+
+**Feature 17 — 2026-10-04:** Implemented `test/helpers/package-smoke.ts` and dedicated `test:package`. Fresh source build, dry-run/real pack, 51-file JS distribution plus metadata/README/LICENSE, temporary tarball installation, npm ls, offline clean reinstall and actual npm launcher assertions passed on macOS / Node 24.21.0 / npm 11.19.0. Help/version work outside the checkout and ignore target version; READY local/CI exits 0/0; failed-build REVIEW exits 0/1 with later scanners passing; usage/missing manifest exit 2. Exact safe streams and fixture/Git preservation passed. Incomplete offline cache returns 1/ENOTCACHED with no registry fallback. `--prepare` permits initial cache population; verified reinstall is offline. Initial sandbox ENOTFOUND was resolved with registry permission. npm supplies installed executable permissions. Production/test compilation and all 376 tests across 30 files passed. No dependency, lockfile, engine or scanner changes, global link or publication. Windows/Linux/minimum Node remain unverified. Feature 17 was committed as `7d11ac7` on main; its uncommitted handoff below is historical.
 
 **Feature 17 planning — 2026-10-04:** Recorded an architecture plan in `build-plan.md` against clean `main` at `dc6fb7a`. Plan uses a real tarball, an isolated local consumer and npm-generated launchers; narrows distribution to production JS plus mandatory metadata/README/LICENSE; separates dependency-cache preparation from offline installed-package assertions. Covers help/version outside a project, READY and failing-build local/CI scans, fatal exits, target cwd, safe output and fixture mutation accounting. Scanner registry remains accurate; no scanner change is planned. No implementation, build, pack, installation or tests performed. Feature 17 remains unfinished; no blocking product decision. Feature 16 is committed at `974fc86`; its earlier uncommitted handoff notes are historical.
 
@@ -107,7 +111,7 @@ Verification:
 
 - [x] 16 Integration Fixture Suite
 - [x] 17 Executable and Package Smoke Test
-- [ ] 18 Documentation and v0.1 Release Candidate
+- [x] 18 Documentation and v0.1 Release Candidate
 
 ---
 
@@ -126,15 +130,15 @@ Verification:
 
 | Gate                       | Status      | Last verified |
 | -------------------------- | ----------- | ------------- |
-| TypeScript build           | Passed fresh production build and test compilation including package runner | 2026-10-04 |
-| Unit tests                 | Passed in full 376-test suite; existing exit/adapter/scanner checks retained | 2026-10-04 |
-| Integration tests          | Passed including 16 real compiled-CLI fixture cases across seven families, local/CI modes and both invalid-manifest variants | 2026-10-04 |
-| Help/version smoke test    | Installed help/version passed outside checkout; target manifest version ignored; invalid usage returns 2 | 2026-10-04 |
-| Local scan smoke test      | Installed READY/failed-build exact reports exit 0; missing manifest exits 2; existing fixture suite passed | 2026-10-04 |
-| CI exit-code smoke test    | Full matrix passed through the real reporter: READY 0, REVIEW/NOT READY/scanner error 1 in CI, local 0; scanner-assigned exits overwritten; render/usage/discovery/bootstrap/cleanup failures 2 | 2026-10-02 |
-| Package dry run            | Passed dry-run/real pack 51-file lists and installed bytes, dependency checks, offline reinstall and POSIX launcher | 2026-10-04 |
-| Secret-leak negative check | Passed prior checks plus exact fixture reports, name-only missing details and absence of synthetic environment/subprocess sentinels | 2026-10-03 |
-| Shipcheck-owned mutation check | Fixture source trees unchanged; temporary copies permit only exact build/test artifacts, with original bytes and Git HEAD/index/status unchanged; invalid copies unchanged | 2026-10-03 |
+| TypeScript build           | Passed fresh production build and test compilation including package runner | 2026-10-05 |
+| Unit tests                 | Passed in full 376-test suite; existing exit/adapter/scanner checks retained | 2026-10-05 |
+| Integration tests          | Passed including 16 real compiled-CLI fixture cases across seven families, local/CI modes and both invalid-manifest variants | 2026-10-05 |
+| Help/version smoke test    | Installed help/version passed outside checkout; target manifest version ignored; invalid usage returns 2 | 2026-10-05 |
+| Local scan smoke test      | Installed READY/failed-build exact reports exit 0; missing manifest exits 2; existing fixture suite passed | 2026-10-05 |
+| CI exit-code smoke test    | Full matrix passed through the real reporter: READY 0, REVIEW/NOT READY/scanner error 1 in CI, local 0; scanner-assigned exits overwritten; render/usage/discovery/bootstrap/cleanup failures 2 | 2026-10-05 |
+| Package dry run            | Passed dry-run/real pack 51-file lists and installed bytes, dependency checks, offline reinstall and POSIX launcher | 2026-10-05 |
+| Secret-leak negative check | Passed prior checks plus exact fixture reports, name-only missing details and absence of synthetic environment/subprocess sentinels | 2026-10-05 |
+| Shipcheck-owned mutation check | Fixture source trees unchanged; temporary copies permit only exact build/test artifacts, with original bytes and Git HEAD/index/status unchanged; invalid copies unchanged | 2026-10-05 |
 
 ---
 
@@ -159,6 +163,16 @@ Verification:
 - Shipcheck-owned operations never modify the scanned repository; repository-owned build/test scripts may generate files or perform other side effects
 
 Add implementation-time decisions below this line with date, reason, and affected files.
+
+### Feature 18 implementation and verification — 2026-10-05
+
+- Replaced development-stage README inventory with installation/link/usage guidance, scanner policy, score thresholds, exact REVIEW output, exit table and explicit limitations. Project overview example uses the same snapshot.
+- Verified documentation against production discovery, ordered registry, environment union-presence policy, scoring constants, command/bootstrap ownership and reporter tokens/detail limits. All four registry entries remain accurate; no scanner changes.
+- `NO_COLOR=1 npm test -- --maxWorkers=4` passed production/test compilation and 376 tests across 30 files, including fixtures, leak/mutation checks and exit matrix.
+- `npm run test:package -- --cache <existing npm cache>` failed safely with ENOTCACHED because the seed cache was incomplete. `--prepare` initially hit sandbox ENOTFOUND; registry permission resolved preparation and the verified offline reinstall. Installed package assertions passed (51 files).
+- README link smoke used an owned temporary prefix, no persistent global link, and fresh temporary READY fixtures per scan. Installed npm 11.19.0 source confirmed CLI `--prefix` also sets localPrefix; use `NPM_CONFIG_PREFIX` for a dedicated global link location while retaining the source cwd. Corrected and verified the documented command. Reusing a ready fixture failed its non-idempotent build (`mkdir`); independent copies corrected the verification harness, with no product change.
+- Linked help/version/scan help and READY local/CI passed with empty stderr and unchanged Git state; compiled help/version/scan help passed outside the checkout. README/overview text matches the canonical REVIEW snapshot byte-for-byte. Existing source-install evidence (`npm ci`) remains in the 2026-09-30 setup entry; no dependency changes or checkout reinstall were needed for this documentation feature.
+- Review covered requirement alignment, architecture boundaries, docs/packaging metadata, safe streams, cleanup/mutation evidence and scope. No actionable findings within the reviewed scope. Windows/Linux/minimum Node and PowerShell instructions remain unverified on this host. No publication, commit or push.
 
 ### Feature 17 implementation and verification — 2026-10-04
 
@@ -391,6 +405,20 @@ Known blocker:
 ```
 
 ### Latest Handoff
+
+```text
+Date: 2026-10-05
+Completed feature: 18 Documentation and v0.1 Release Candidate
+Files changed: README.md, context/project-overview.md, context/build-plan.md, context/progress-tracker.md, context/library-docs.md, context/scanner-registry.md
+Tests run and results: production/test compilation and all 376 tests across 30 files passed; installed-package smoke passed (51 files/cache preparation/offline reinstall); linked and compiled CLI documentation smoke and exact examples passed
+Review: no actionable findings within scope; four-scanner registry verified accurate; git diff --check passed
+Verification limits: macOS / Node 24.21.0 / npm 11.19.0; final Windows/Linux/minimum Node and PowerShell unverified
+Decision recorded: NPM_CONFIG_PREFIX for isolated development link; historical handoffs superseded by current status
+Next feature: None in v0.1; platform verification is follow-up, publication outside scope
+Known blocker: None. Feature 18 uncommitted; Features 01–17 committed at 7d11ac7
+```
+
+### Previous Handoff — Feature 17
 
 ```text
 Date: 2026-10-04

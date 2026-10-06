@@ -202,13 +202,15 @@ The final score is rounded to the nearest whole number.
 ```text
 Shipcheck v0.1.0
 
-Project: xpress-api
-Path: /workspace/xpress-api
+Project: example-service
+Path: /workspace/example-service
 
 ✓ Git          Working tree is clean (main)
 ✓ Build        npm run build passed
 ✓ Tests        npm test passed
-✗ Environment Missing: PAYSTACK_SECRET_KEY
+✗ Environment  Missing 2 required variables
+  - DATABASE_URL
+  - REDIS_URL
 
 Checks: 3 passed, 1 failed, 0 skipped
 Release score: 75/100

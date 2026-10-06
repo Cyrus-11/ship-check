@@ -633,3 +633,8 @@ Any package not listed here needs a documented scope decision before installatio
 - Security scanners
 
 Rejecting these dependencies keeps v0.1 focused; it does not decide later versions.
+
+
+## Documentation/link verification — Feature 18 (2026-10-05)
+
+No library integration or dependency versions changed. Checked official npm v11 install/link documentation and installed npm 11.19.0 `lib/commands/link.js` and `@npmcli/config/lib/index.js`. A command-line `--prefix` sets both local package lookup and the global link prefix, so a no-argument `npm link --prefix <empty prefix>` looks for that prefix's package.json. README uses `NPM_CONFIG_PREFIX` instead: source cwd remains the checkout while the link/bin are placed under an owned prefix. Verified linked help/version/scan help and READY local/CI on macOS. Windows places bins at the prefix root; PowerShell instructions remain unverified here. Tarball installation and offline clean reinstall passed through the existing package smoke check. No persistent global link or public publication was performed.
